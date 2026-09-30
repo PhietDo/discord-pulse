@@ -1,0 +1,12 @@
+{
+  "guild": {"id": "900", "name": "Acme Dev"},
+  "channel": {"id": "300", "type": "GuildPublicThread", "categoryId": "100", "category": "help", "name": "M1 install thread"},
+  "messages": [
+    {
+      "id": "3001", "type": "Default",
+      "timestamp": "2026-09-20T16:00:00+00:00",
+      "content": "Still broken after reinstall, any ideas?",
+      "author": {"id": "u1", "name": "alice", "nickname": null, "isBot": false}
+    }
+  ]
+}

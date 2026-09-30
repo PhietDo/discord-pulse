@@ -1,0 +1,32 @@
+{
+  "guild": {"id": "900", "name": "Acme Dev", "iconUrl": ""},
+  "channel": {"id": "100", "type": "GuildTextChat", "categoryId": "50", "category": "Community", "name": "help", "topic": null},
+  "dateRange": {"after": null, "before": null},
+  "messages": [
+    {
+      "id": "1001", "type": "Default",
+      "timestamp": "2026-09-20T10:00:00.1234567-04:00", "timestampEdited": null, "isPinned": false,
+      "content": "Install fails on M1 with the new SDK",
+      "author": {"id": "u1", "name": "alice", "discriminator": "0000", "nickname": "Alice", "isBot": false,
+                 "avatarUrl": "https://cdn.discordapp.com/avatars/u1/a.png"},
+      "attachments": [], "embeds": [], "reactions": [], "mentions": []
+    },
+    {
+      "id": "1002", "type": "Reply",
+      "timestamp": "2026-09-20T14:30:00+00:00", "timestampEdited": "2026-09-20T14:35:00+00:00", "isPinned": false,
+      "content": "Which Python version?",
+      "author": {"id": "t1", "name": "staffer", "nickname": "Staffer", "isBot": false, "avatarUrl": "avatars/t1.png"},
+      "reference": {"messageId": "1001", "channelId": "100", "guildId": "900"}
+    },
+    {
+      "id": "1003", "type": "ChannelPinnedMessage",
+      "timestamp": "2026-09-20T15:00:00+00:00", "content": "Pinned a message.",
+      "author": {"id": "t1", "name": "staffer", "nickname": "Staffer", "isBot": false}
+    },
+    {
+      "id": "1004", "type": "Default",
+      "timestamp": "2026-09-20T15:05:00+00:00", "content": "Build passed",
+      "author": {"id": "b1", "name": "ci-bot", "nickname": "ci-bot", "isBot": true}
+    }
+  ]
+}

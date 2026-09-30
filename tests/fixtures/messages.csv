@@ -1,0 +1,4 @@
+guild_id,channel_id,message_id,author_id,author_name,content,created_at,reply_to_id
+900,100,2001,u2,bob,"Docs for auth are confusing, love the CLI though",2026-09-21T09:00:00Z,
+900,100,2002,u3,carol,no timestamp,,
+900,100,2003,u2,bob,thanks!,2026-09-21T09:05:00Z,2001
