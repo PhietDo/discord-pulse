@@ -17,7 +17,7 @@ from pulse.agents.base import BudgetExceeded, LLMError
 from pulse.agents.llm import LLMClient, LLMResponse
 from pulse.models import KINDS, TriageResult, to_iso
 
-PROMPT_VERSION = "triage-v1"
+PROMPT_VERSION = "triage-v2"
 SCHEMA_NAME = "triage_result"
 BATCH_SIZE = 25
 MAX_CONTENT_CHARS = 2000
@@ -56,7 +56,7 @@ class TriageStats:
 
 
 def load_prompt() -> str:
-    return (Path(__file__).parent / "prompts" / "triage_v1.md").read_text(encoding="utf-8")
+    return (Path(__file__).parent / "prompts" / "triage_v2.md").read_text(encoding="utf-8")
 
 
 def select_untriaged(
