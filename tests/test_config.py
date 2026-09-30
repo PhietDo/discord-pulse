@@ -198,6 +198,12 @@ def test_classifier_rejects_threshold_out_of_range(tmp_path):
         load_config(write(tmp_path, BASE + CLASSIFIER.replace("0.75", "1.5")), env=ENV)
 
 
+def test_classifier_enabled_must_be_bool(tmp_path):
+    text = CLASSIFIER.replace("enabled = true", 'enabled = "false"')
+    with pytest.raises(ConfigError, match="enabled"):
+        load_config(write(tmp_path, BASE + text), env=ENV)
+
+
 def test_llm_agents_still_reject_jev_provider(tmp_path):
     with pytest.raises(ConfigError, match="provider"):
         load_config(write(tmp_path, BASE.replace('theme = "openai:gpt-x"', 'theme = "jev:jev-latest"')), env=ENV)

@@ -321,11 +321,11 @@ escalate_kinds = ["bug", "docs", "feature_request", "praise"]
 per_request = 0.0000387               # measured 2026-09-30; USD per request
 ```
 
-`per_request` pricing is a new pricing form for request-priced models; config validation requires it for the `jev` provider when the classifier is enabled.
+`per_request` pricing is a new pricing form for request-priced models; config validation requires it for the `jev` provider when the classifier is enabled. It is a fallback used only when a response carries no cost (Jev normally reports its own per-request cost).
 
 ### 14.4 Data model changes
 
-`triage` gains `needs_reply_p REAL` (nullable; null for LLM-only rows), `kind_confidence REAL`, and `labeler TEXT` (`jev` or `llm`). Jev calls are logged in `agent_runs` with agent `classifier` and count toward the daily budget.
+`triage` gains `needs_reply_p REAL` (nullable; null for LLM-only rows), `kind_confidence REAL`, and `labeler TEXT` (`jev`, `llm`, or `rule` for staff messages written without a model). Jev calls are logged in `agent_runs` with agent `classifier` and count toward the daily budget.
 
 ### 14.5 Gate
 

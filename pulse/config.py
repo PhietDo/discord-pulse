@@ -126,8 +126,11 @@ def _classifier(raw: Any, env: Mapping[str, str]) -> ClassifierConfig | None:
     unknown = [k for k in kinds if k not in KINDS]
     if unknown:
         raise ConfigError(f"[classifier] escalate_kinds has unknown kinds {unknown}; allowed {list(KINDS)}")
+    enabled = raw.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f"[classifier] enabled must be a boolean, got {enabled!r}")
     cfg = ClassifierConfig(
-        enabled=bool(raw.get("enabled", False)),
+        enabled=enabled,
         model=model,
         needs_reply_threshold=_unit_interval("needs_reply_threshold", raw.get("needs_reply_threshold", 0.7)),
         min_confidence=_unit_interval("min_confidence", raw.get("min_confidence", 0.6)),

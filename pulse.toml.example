@@ -46,9 +46,10 @@ needs_reply_threshold = 0.7
 min_confidence = 0.6
 escalate_kinds = ["bug", "docs", "feature_request", "praise"]
 
-# Jev reports its own cost per request; this is only a fallback.
-# [pricing."jev:jev-latest"]
-# per_request = 0.0000387
+# Jev reports its own cost per request; this is only a fallback, used when a
+# response carries no cost, so budget accounting never goes blind.
+[pricing."jev:jev-latest"]
+per_request = 0.0000387
 
 # [[launches]]
 # name = "v2.0 SDK"
