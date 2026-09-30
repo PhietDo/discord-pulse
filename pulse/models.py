@@ -42,6 +42,7 @@ class Message:
     edited_at: datetime | None = None
     reply_to_id: str | None = None
     source: str = "file"
+    parent_channel_id: str | None = None
 
 
 @dataclass(frozen=True)

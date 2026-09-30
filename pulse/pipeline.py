@@ -38,7 +38,13 @@ def build_llm(conn: sqlite3.Connection, config: Config) -> LLMClient:
 
 
 def ingest(conn: sqlite3.Connection, config: Config, source: Source) -> tuple[UpsertStats, list[str]]:
-    stats = upsert_messages(conn, source.fetch(None), config.team_member_ids)
+    messages = source.fetch(None)
+    if config.channel_ids:
+        ids = set(config.channel_ids)
+        messages = (
+            m for m in messages if m.channel_id in ids or m.parent_channel_id in ids
+        )
+    stats = upsert_messages(conn, messages, config.team_member_ids)
     return stats, list(source.errors)
 
 

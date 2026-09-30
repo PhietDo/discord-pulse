@@ -27,14 +27,18 @@ class FileSource:
     def fetch(self, since: datetime | None = None) -> Iterator[Message]:
         self.errors = []
         if not self.imports_dir.is_dir():
+            self.errors.append(f"imports folder {self.imports_dir} not found")
             return
         for path in sorted(self.imports_dir.iterdir()):
+            if path.is_dir() or path.name.startswith("."):
+                continue
             suffix = path.suffix.lower()
             if suffix == ".json":
                 messages = self._read_json(path)
             elif suffix == ".csv":
                 messages = self._read_csv(path)
             else:
+                self.errors.append(f"{path.name}: unsupported format (export as JSON or CSV)")
                 continue
             for m in messages:
                 if since is None or m.created_at >= since:
@@ -56,6 +60,7 @@ class FileSource:
 
         is_thread = "Thread" in str(channel.get("type", ""))
         channel_name = str(channel.get("name") or "")
+        parent_channel_id = str(channel["categoryId"]) if is_thread and channel.get("categoryId") else None
         out: list[Message] = []
         for i, raw in enumerate(raw_messages):
             try:
@@ -81,6 +86,7 @@ class FileSource:
                         edited_at=parse_timestamp(edited) if edited else None,
                         reply_to_id=str(reference["messageId"]) if reference.get("messageId") else None,
                         source="file",
+                        parent_channel_id=parent_channel_id,
                     )
                 )
             except (AttributeError, KeyError, TypeError, ValueError) as e:
@@ -130,4 +136,5 @@ def _csv_row(row: dict[str, str | None]) -> Message:
         edited_at=parse_timestamp(edited) if edited else None,
         reply_to_id=val("reply_to_id"),
         source="file",
+        parent_channel_id=val("parent_channel_id"),
     )

@@ -7,7 +7,7 @@ from pulse.agents.base import BackendResult
 from pulse.agents.triage import TriageStats
 from pulse.db import connect
 from pulse.modqueue import ModQueueStats
-from pulse.pipeline import PipelineReport, format_report, run_pipeline
+from pulse.pipeline import PipelineReport, format_report, ingest, run_pipeline
 from pulse.sources.file_source import FileSource
 from pulse.store import UpsertStats
 from tests.fakes import FakeBackend, make_config, make_llm
@@ -60,3 +60,25 @@ def test_format_report_mentions_budget():
     assert "failed batches 1" in text
     assert "daily budget cap reached" in text
     assert "opened 1" in text
+
+
+def test_ingest_filters_to_configured_channels_and_their_threads(tmp_path):
+    for name in ("dce_channel.json", "dce_thread.json"):
+        shutil.copy(FIXTURES / name, tmp_path / name)
+    other = json.loads((FIXTURES / "dce_channel.json").read_text())
+    other["channel"]["id"] = "555"
+    for i, m in enumerate(other["messages"]):
+        m["id"] = f"555{i}"
+    (tmp_path / "dce_channel_other.json").write_text(json.dumps(other))
+
+    conn = connect(":memory:")
+    config = make_config(imports_dir=tmp_path, channel_ids=("100",))
+    stats, errors = ingest(conn, config, FileSource(tmp_path))
+
+    ids = {r["id"] for r in conn.execute("SELECT id FROM messages")}
+    assert ids == {"1001", "1002", "1004", "3001"}
+    assert not any(i.startswith("555") for i in ids)
+
+    src = FileSource(tmp_path)
+    by_id = {m.id: m for m in src.fetch()}
+    assert by_id["3001"].parent_channel_id == "100"

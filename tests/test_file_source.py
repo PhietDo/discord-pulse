@@ -41,6 +41,7 @@ def test_thread_export_sets_thread_id(tmp_path):
     m = msgs["3001"]
     assert (m.channel_id, m.thread_id) == ("300", "300")
     assert m.author_name == "alice"  # null nickname falls back to name
+    assert m.parent_channel_id == "100"
 
 
 def test_reads_csv_and_reports_bad_row_with_line(tmp_path):
@@ -82,10 +83,22 @@ def test_since_filters_and_other_files_ignored(tmp_path):
     imports_with(tmp_path, "dce_channel.json", "messages.csv")
     (tmp_path / "notes.txt").write_text("ignore me")
     since = datetime(2026, 9, 21, tzinfo=timezone.utc)
-    assert set(by_id(FileSource(tmp_path).fetch(since))) == {"2001", "2003"}
+    src = FileSource(tmp_path)
+    assert set(by_id(src.fetch(since))) == {"2001", "2003"}
+    assert any("notes.txt" in e for e in src.errors)
 
 
 def test_missing_imports_dir_yields_nothing(tmp_path):
     src = FileSource(tmp_path / "nope")
     assert list(src.fetch()) == []
-    assert src.errors == []
+    assert src.errors == [f"imports folder {tmp_path / 'nope'} not found"]
+
+
+def test_unsupported_file_is_reported(tmp_path):
+    (tmp_path / "help.html").write_text("<html></html>")
+    (tmp_path / ".DS_Store").write_text("")
+    src = FileSource(tmp_path)
+    assert list(src.fetch()) == []
+    assert len(src.errors) == 1
+    assert "help.html" in src.errors[0]
+    assert "JSON or CSV" in src.errors[0]

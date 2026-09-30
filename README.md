@@ -16,7 +16,7 @@ export ANTHROPIC_API_KEY=...       # and/or OPENAI_API_KEY, OPENROUTER_API_KEY
 Drop export files into `imports/`:
 
 - DiscordChatExporter JSON (one file per channel or thread), or
-- CSV with columns `guild_id,channel_id,message_id,author_id,author_name,content,created_at` and optional `reply_to_id,thread_id,channel_name,author_avatar_url,is_bot,edited_at`.
+- CSV with columns `guild_id,channel_id,message_id,author_id,author_name,content,created_at` and optional `reply_to_id,thread_id,channel_name,author_avatar_url,is_bot,edited_at,parent_channel_id`.
 
 Re-importing is safe: messages are keyed on Discord's message id, and edited messages are re-triaged.
 
