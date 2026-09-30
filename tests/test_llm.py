@@ -79,6 +79,17 @@ def test_validate_callback_failure_triggers_retry():
     assert len(backend.calls) == 2
 
 
+def test_validate_non_value_error_propagates():
+    conn = connect(":memory:")
+    backend = FakeBackend([ok()])
+
+    def bad_validator(data):
+        raise KeyError("bug in validator")
+
+    with pytest.raises(KeyError, match="bug in validator"):
+        call(make_llm(conn, make_config(), backend), validate=bad_validator)
+
+
 def test_output_invalid_tokens_are_billed():
     conn = connect(":memory:")
     backend = FakeBackend([OutputInvalid("no tool block", 500, 50), ok(inp=1000, out=200)])

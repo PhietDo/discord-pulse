@@ -82,6 +82,27 @@ class LLMClient:
         schema_name: str,
         validate: Callable[[dict], object] | None = None,
     ) -> LLMResponse:
+        """Call a model and return the validated response.
+
+        Args:
+            agent: Agent name (e.g., "triage").
+            system: System prompt.
+            user: User prompt.
+            schema: JSON schema for structured output validation.
+            schema_name: Schema name for logging.
+            validate: Optional validation callback. Receives schema-valid data.
+                Must raise ValueError to reject the output (triggering one retry).
+                Any other exception is treated as a bug and propagates without
+                recording an agent_runs row.
+
+        Returns:
+            LLMResponse with data and run_id.
+
+        Raises:
+            BudgetExceeded: Daily budget cap reached (no call made, run recorded as "skipped_budget").
+            LLMError: Call failed after retries (run recorded as "failed" with error message).
+            Any exception from validate() that is not ValueError.
+        """
         ref = self._config.models[agent]
         price = self._config.pricing.get(str(ref))
         started = self._now()
