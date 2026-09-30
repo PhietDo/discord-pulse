@@ -43,3 +43,15 @@ def test_sentiment_range_enforced():
             "INSERT INTO triage (message_id, sentiment, confidence, kind, topics, needs_reply,"
             " prompt_version, created_at) VALUES ('m', 3, 1.0, 'other', '[]', 0, 'v', 'x')"
         )
+
+
+def test_wal_mode_enabled_for_file_db(tmp_path):
+    conn = connect(tmp_path / "p.db")
+    mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+    assert mode.lower() == "wal"
+
+
+def test_busy_timeout_set(tmp_path):
+    conn = connect(tmp_path / "p.db")
+    timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    assert timeout == 5000

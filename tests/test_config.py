@@ -126,3 +126,8 @@ def test_paths_section_overrides_defaults(tmp_path):
     cfg = load_config(write(tmp_path, BASE + '\n[paths]\ndb = "data/p.db"\nimports = "in"\n'), env=ENV)
     assert cfg.db_path == tmp_path / "data" / "p.db"
     assert cfg.imports_dir == tmp_path / "in"
+
+
+def test_missing_config_file_hints_example(tmp_path):
+    with pytest.raises(ConfigError, match="pulse.toml.example"):
+        load_config(tmp_path / "pulse.toml", env=ENV)

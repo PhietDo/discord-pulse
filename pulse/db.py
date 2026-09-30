@@ -128,5 +128,10 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    if str(path) != ":memory:":
+        # Lets the Plan 3 web server read the DB concurrently with the pipeline
+        # writing to it.
+        conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     conn.executescript(SCHEMA)
     return conn

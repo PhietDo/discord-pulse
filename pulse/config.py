@@ -95,6 +95,8 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Confi
     env = os.environ if env is None else env
     try:
         raw = tomllib.loads(path.read_text())
+    except FileNotFoundError as e:
+        raise ConfigError(f"cannot read {path}: {e} (copy pulse.toml.example to pulse.toml)") from e
     except (OSError, tomllib.TOMLDecodeError) as e:
         raise ConfigError(f"cannot read {path}: {e}") from e
 

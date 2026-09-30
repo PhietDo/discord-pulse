@@ -32,7 +32,9 @@ Re-importing is safe: messages are keyed on Discord's message id, and edited mes
 .venv/bin/python -m pulse.run pipeline            # all of the above
 ```
 
-Spending is capped by `[budget] daily_usd_cap`; once reached, agent calls stop for the day and the run says so.
+`--since` dates are treated as UTC midnight. `--force` requires `--since` (re-triaging your whole history isn't allowed by accident).
+
+Spending is capped by `[budget] daily_usd_cap`; once reached, agent calls stop for the day and the run says so. The cap resets at UTC midnight.
 
 ## Tests
 
