@@ -106,3 +106,35 @@ def test_missing_cost_leaves_reported_cost_none():
     del no_cost["usage"]["cost"]
     backend, _ = backend_with(lambda r: httpx.Response(200, json=no_cost))
     assert backend.classify("jev-latest", STATE).reported_cost is None
+
+
+def test_non_numeric_cost_is_treated_as_missing():
+    bad = json.loads(json.dumps(FIXTURE))
+    bad["usage"]["cost"] = "n/a"
+    backend, _ = backend_with(lambda r: httpx.Response(200, json=bad))
+    result = backend.classify("jev-latest", STATE)
+    assert result.reported_cost is None
+
+
+def test_usage_not_a_dict_is_treated_as_missing():
+    bad = json.loads(json.dumps(FIXTURE))
+    bad["usage"] = ["not", "a", "dict"]
+    backend, _ = backend_with(lambda r: httpx.Response(200, json=bad))
+    result = backend.classify("jev-latest", STATE)
+    assert result.reported_cost is None
+
+
+def test_answers_not_a_dict_is_output_invalid():
+    bad = json.loads(json.dumps(FIXTURE))
+    bad["answers"] = []
+    backend, _ = backend_with(lambda r: httpx.Response(200, json=bad))
+    with pytest.raises(OutputInvalid):
+        backend.classify("jev-latest", STATE)
+
+
+def test_confidence_out_of_range_is_output_invalid():
+    bad = json.loads(json.dumps(FIXTURE))
+    bad["answers"]["kind"]["confidence"] = 1.5
+    backend, _ = backend_with(lambda r: httpx.Response(200, json=bad))
+    with pytest.raises(OutputInvalid):
+        backend.classify("jev-latest", STATE)

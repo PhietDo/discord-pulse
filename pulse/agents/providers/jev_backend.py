@@ -42,10 +42,17 @@ class JevBackend:
             data = resp.json()
         except ValueError as e:
             raise OutputInvalid(f"not JSON: {e}") from e
-        cost = (data.get("usage") or {}).get("cost") if isinstance(data, dict) else None
-        reported = float(cost) if cost is not None else None
+        reported: float | None = None
+        usage = data.get("usage") if isinstance(data, dict) else None
+        if isinstance(usage, dict):
+            cost = usage.get("cost")
+            if cost is not None:
+                try:
+                    reported = float(cost)
+                except (TypeError, ValueError):
+                    reported = None
         try:
             result = parse_answers(data)
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, TypeError, ValueError, AttributeError) as e:
             raise OutputInvalid(f"unexpected answers: {e!r}", reported_cost=reported) from e
         return replace(result, reported_cost=reported)

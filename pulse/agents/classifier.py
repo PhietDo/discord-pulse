@@ -75,16 +75,22 @@ def parse_answers(data: dict) -> ClassifierResult:
     p = float(answers["needs_reply"]["noul"])
     kind = str(answers["kind"]["choice"])
     sentiment = str(answers["sentiment"]["choice"])
+    kind_confidence = float(answers["kind"]["confidence"])
+    sentiment_confidence = float(answers["sentiment"]["confidence"])
     if not 0.0 <= p <= 1.0:
         raise ValueError(f"needs_reply probability out of range: {p}")
     if kind not in KINDS:
         raise ValueError(f"unknown kind {kind!r}")
     if sentiment not in SENTIMENT_LABELS:
         raise ValueError(f"unknown sentiment {sentiment!r}")
+    if not 0.0 <= kind_confidence <= 1.0:
+        raise ValueError(f"kind_confidence out of range: {kind_confidence}")
+    if not 0.0 <= sentiment_confidence <= 1.0:
+        raise ValueError(f"sentiment_confidence out of range: {sentiment_confidence}")
     return ClassifierResult(
         needs_reply_p=p,
         kind=kind,
-        kind_confidence=float(answers["kind"]["confidence"]),
+        kind_confidence=kind_confidence,
         sentiment=int(sentiment),
-        sentiment_confidence=float(answers["sentiment"]["confidence"]),
+        sentiment_confidence=sentiment_confidence,
     )
