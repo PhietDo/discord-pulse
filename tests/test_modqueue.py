@@ -112,3 +112,9 @@ def test_messages_older_than_lookback_are_ignored():
     conn = db(msg("old", minutes=0))
     set_triage(conn, "old", sentiment=-2, needs_reply=True)
     assert refresh_mod_queue(conn, CONFIG, T0 + timedelta(days=8)).opened == 0
+
+
+def test_team_reply_in_thread_started_from_question_counts():
+    conn = db(msg("q1"), msg("r1", minutes=30, author_id="t1", thread_id="q1"))
+    set_triage(conn, "q1", needs_reply=True)
+    assert refresh_mod_queue(conn, CONFIG, NOW).opened == 0

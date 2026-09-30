@@ -20,10 +20,13 @@ class ModQueueStats:
 
 
 def _team_replied(conn: sqlite3.Connection, message_id: str, thread_id: str | None, created_at: str) -> bool:
+    # A message with no thread_id can still be the message a Discord thread was
+    # started from (thread id == starter message id), so also match replies
+    # whose thread_id is this message's own id.
     row = conn.execute(
         "SELECT 1 FROM messages r WHERE r.is_team = 1 AND r.created_at > ?"
-        " AND (r.reply_to_id = ? OR (? IS NOT NULL AND r.thread_id = ?)) LIMIT 1",
-        (created_at, message_id, thread_id, thread_id),
+        " AND (r.reply_to_id = ? OR (? IS NOT NULL AND r.thread_id = ?) OR r.thread_id = ?) LIMIT 1",
+        (created_at, message_id, thread_id, thread_id, message_id),
     ).fetchone()
     return row is not None
 
