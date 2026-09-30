@@ -36,6 +36,18 @@ Re-importing is safe: messages are keyed on Discord's message id, and edited mes
 
 Spending is capped by `[budget] daily_usd_cap`; once reached, agent calls stop for the day and the run says so. The cap resets at UTC midnight.
 
+## Jev first pass (optional)
+
+With `[classifier] enabled = true`, triage asks Jev (a cheap closed-set classifier, via OpenRouter) about every message first. Confident, low-stakes messages are labelled by Jev alone; anything negative, likely to need a reply, a bug, docs issue, feature request or praise, or low-confidence, still goes to the triage LLM for full labels and topics. Staff messages are always neutral. If Jev fails on a message, the LLM handles it.
+
+Measured on synthetic data this cut triage cost by roughly 2-3x at the same needs-reply accuracy (see `docs/benchmarks/`). Re-check on your own data before relying on it.
+
+List the mod queue, highest priority first, with links to each message:
+
+```bash
+.venv/bin/python -m pulse.run queue --limit 20
+```
+
 ## Tests
 
 ```bash

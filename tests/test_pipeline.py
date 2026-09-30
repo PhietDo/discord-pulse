@@ -7,10 +7,10 @@ from pulse.agents.base import BackendResult
 from pulse.agents.triage import TriageStats
 from pulse.db import connect
 from pulse.modqueue import ModQueueStats
-from pulse.pipeline import PipelineReport, format_report, ingest, run_pipeline
+from pulse.pipeline import PipelineReport, format_report, format_triage, ingest, run_pipeline, build_llm
 from pulse.sources.file_source import FileSource
 from pulse.store import UpsertStats
-from tests.fakes import FakeBackend, make_config, make_llm
+from tests.fakes import FakeBackend, make_config, make_llm, classifier_config
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -108,3 +108,20 @@ def test_format_queue_shows_author_channel_age_and_jump_link():
 
 def test_format_queue_when_empty():
     assert format_queue([], T0) == "mod queue: nothing open"
+
+
+def test_build_llm_attaches_jev_only_when_enabled(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "y")
+    assert build_llm(connect(":memory:"), make_config(classifier=classifier_config())).has_classifier is True
+    assert build_llm(connect(":memory:"), make_config(classifier=classifier_config(enabled=False))).has_classifier is False
+    assert build_llm(connect(":memory:"), make_config()).has_classifier is False
+
+
+def test_format_triage_reports_jev_split():
+    text = format_triage(TriageStats(triaged=10, jev_labeled=7, escalated=3, classifier_failed=1))
+    assert "jev: labeled 7, escalated to LLM 3, classifier failures 1" in text
+
+
+def test_format_triage_without_jev_has_no_jev_line():
+    assert "jev" not in format_triage(TriageStats(triaged=4))

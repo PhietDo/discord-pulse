@@ -36,7 +36,12 @@ def build_backends(config: Config) -> dict[str, Backend]:
 
 
 def build_llm(conn: sqlite3.Connection, config: Config) -> LLMClient:
-    return LLMClient(conn, config, build_backends(config))
+    classifier = None
+    if config.classifier is not None and config.classifier.enabled:
+        from pulse.agents.providers.jev_backend import JevBackend
+
+        classifier = JevBackend()
+    return LLMClient(conn, config, build_backends(config), classifier=classifier)
 
 
 def ingest(conn: sqlite3.Connection, config: Config, source: Source) -> tuple[UpsertStats, list[str]]:
@@ -82,6 +87,11 @@ def format_ingest(stats: UpsertStats, errors: list[str]) -> str:
 
 def format_triage(stats: TriageStats) -> str:
     line = f"triage: triaged {stats.triaged}, failed batches {stats.failed_batches}"
+    if stats.jev_labeled or stats.escalated or stats.classifier_failed:
+        line += (
+            f"\n  jev: labeled {stats.jev_labeled}, escalated to LLM {stats.escalated},"
+            f" classifier failures {stats.classifier_failed}"
+        )
     if stats.skipped_budget_batches:
         line += f"\n  daily budget cap reached: {stats.skipped_budget_batches} batches skipped"
     return line
