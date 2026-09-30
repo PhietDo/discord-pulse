@@ -1,7 +1,9 @@
-"""Triage subagent: label every message with sentiment, kind, topics, needs_reply.
+"""Triage: label every message with sentiment, kind, topics, needs_reply.
 
-Batches fan out to concurrent LLM calls. Worker threads only call the model;
-triage rows are written on the calling thread after all calls finish.
+With the classifier enabled, Stage A asks Jev about every message and stores
+confident, low-stakes labels directly; Stage B sends the rest to the batched
+LLM path. Worker threads only call models; the calling thread writes each
+result as it arrives, under the LLM client's DB lock.
 """
 from __future__ import annotations
 
@@ -9,12 +11,14 @@ import json
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from pulse.agents.base import BudgetExceeded, LLMError
-from pulse.agents.llm import LLMClient, LLMResponse
+from pulse.agents.classifier import QUESTIONS_VERSION, ClassifierResult
+from pulse.agents.llm import ClassifyResponse, LLMClient, LLMResponse
+from pulse.config import ClassifierConfig
 from pulse.models import KINDS, TriageResult, to_iso
 
 PROMPT_VERSION = "triage-v2"
@@ -53,6 +57,9 @@ class TriageStats:
     triaged: int = 0
     failed_batches: int = 0
     skipped_budget_batches: int = 0
+    jev_labeled: int = 0
+    escalated: int = 0
+    classifier_failed: int = 0
 
 
 def load_prompt() -> str:
@@ -130,23 +137,112 @@ def parse_results(data: dict, expected_ids: set[str]) -> list[TriageResult]:
     ]
 
 
+_INSERT = (
+    "INSERT OR REPLACE INTO triage (message_id, sentiment, confidence, kind, topics, needs_reply,"
+    " prompt_version, run_id, created_at, needs_reply_p, kind_confidence, labeler)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+
+def needs_escalation(result: ClassifierResult, cfg: ClassifierConfig) -> bool:
+    return (
+        result.sentiment < 0
+        or result.needs_reply_p >= cfg.needs_reply_threshold
+        or result.kind in cfg.escalate_kinds
+        or min(result.kind_confidence, result.sentiment_confidence) < cfg.min_confidence
+    )
+
+
+def _staff_override(result: ClassifierResult) -> ClassifierResult:
+    return replace(result, sentiment=0, kind="other", needs_reply_p=0.0)
+
+
+def _classify_stage(
+    conn: sqlite3.Connection,
+    llm: LLMClient,
+    rows: list[sqlite3.Row],
+    cfg: ClassifierConfig,
+    concurrency: int,
+    stats: TriageStats,
+    stop: threading.Event,
+) -> tuple[list[sqlite3.Row], dict[str, float]]:
+    """Stage A. Returns the rows to send to the LLM (newest first) and Jev's
+    needs_reply probability per message id."""
+    states = json.loads(build_batch_input(conn, rows))["messages"]
+    by_id = {r["id"]: r for r in rows}
+
+    def call(state: dict) -> tuple[str, ClassifyResponse | None, str | None]:
+        mid = state["message_id"]
+        if stop.is_set():
+            return mid, None, "budget"
+        try:
+            return mid, llm.classify(state), None
+        except BudgetExceeded:
+            stop.set()
+            return mid, None, "budget"
+        except LLMError:
+            return mid, None, "failed"
+
+    escalate: list[sqlite3.Row] = []
+    p_by_id: dict[str, float] = {}
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        futures = [pool.submit(call, s) for s in states]
+        for fut in as_completed(futures):
+            mid, resp, error = fut.result()
+            row = by_id[mid]
+            if error == "budget":
+                continue
+            if error == "failed":
+                stats.classifier_failed += 1
+                escalate.append(row)
+                continue
+            result = _staff_override(resp.result) if row["is_team"] else resp.result
+            p_by_id[mid] = result.needs_reply_p
+            if not row["is_team"] and needs_escalation(result, cfg):
+                escalate.append(row)
+                continue
+            now = to_iso(datetime.now(timezone.utc))
+            with llm.db_lock, conn:
+                conn.execute(_INSERT, (
+                    mid, result.sentiment, result.sentiment_confidence, result.kind, "[]",
+                    int(result.needs_reply_p >= cfg.needs_reply_threshold), QUESTIONS_VERSION,
+                    resp.run_id, now, result.needs_reply_p, result.kind_confidence, "jev",
+                ))
+            stats.jev_labeled += 1
+            stats.triaged += 1
+    escalate.sort(key=lambda r: (r["created_at"], r["id"]), reverse=True)
+    stats.escalated = len(escalate)
+    return escalate, p_by_id
+
+
 def run_triage(
     conn: sqlite3.Connection,
     llm: LLMClient,
     *,
     batch_size: int = BATCH_SIZE,
     concurrency: int = 4,
+    classify_concurrency: int = 8,
     since: datetime | None = None,
     force: bool = False,
 ) -> TriageStats:
     rows = select_untriaged(conn, since, force=force)
+    stats = TriageStats()
+    # Set once any call hits the budget cap, so later calls skip entirely
+    # instead of each recording their own skipped_budget row.
+    stop = threading.Event()
+
+    cfg = llm.config.classifier
+    p_by_id: dict[str, float] = {}
+    if rows and cfg is not None and cfg.enabled and llm.has_classifier:
+        rows, p_by_id = _classify_stage(conn, llm, rows, cfg, classify_concurrency, stats, stop)
+        if stop.is_set():
+            # Unfinished messages stay untriaged and are retried on the next run.
+            stats.skipped_budget_batches += 1
+            return stats
+
     batches = [rows[i : i + batch_size] for i in range(0, len(rows), batch_size)]
     jobs = [({r["id"] for r in b}, build_batch_input(conn, b)) for b in batches]
     system = load_prompt()
-
-    # Set once any batch hits the budget cap, so later batches skip the call
-    # entirely instead of each recording their own skipped_budget row.
-    stop = threading.Event()
 
     def call(job: tuple[set[str], str]) -> tuple[set[str], LLMResponse | None, str | None]:
         ids, user = job
@@ -164,7 +260,6 @@ def run_triage(
         except LLMError:
             return ids, None, "failed"
 
-    stats = TriageStats()
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         futures = [pool.submit(call, job) for job in jobs]
         for fut in as_completed(futures):
@@ -178,14 +273,11 @@ def run_triage(
             results = parse_results(resp.data, ids)
             now = to_iso(datetime.now(timezone.utc))
             with llm.db_lock, conn:
-                conn.executemany(
-                    "INSERT OR REPLACE INTO triage (message_id, sentiment, confidence, kind, topics,"
-                    " needs_reply, prompt_version, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        (r.message_id, r.sentiment, r.confidence, r.kind, json.dumps(list(r.topics)),
-                         int(r.needs_reply), PROMPT_VERSION, resp.run_id, now)
-                        for r in results
-                    ],
-                )
+                conn.executemany(_INSERT, [
+                    (r.message_id, r.sentiment, r.confidence, r.kind, json.dumps(list(r.topics)),
+                     int(r.needs_reply), PROMPT_VERSION, resp.run_id, now,
+                     p_by_id.get(r.message_id), None, "llm")
+                    for r in results
+                ])
             stats.triaged += len(results)
     return stats
