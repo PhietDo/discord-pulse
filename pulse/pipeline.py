@@ -87,12 +87,16 @@ def format_ingest(stats: UpsertStats, errors: list[str]) -> str:
 
 def format_triage(stats: TriageStats) -> str:
     line = f"triage: triaged {stats.triaged}, failed batches {stats.failed_batches}"
-    if stats.jev_labeled or stats.escalated or stats.classifier_failed:
+    if stats.jev_labeled or stats.escalated or stats.classifier_failed or stats.kept_llm:
         line += (
             f"\n  jev: labeled {stats.jev_labeled}, escalated to LLM {stats.escalated},"
             f" classifier failures {stats.classifier_failed}"
         )
-    if stats.skipped_budget_batches:
+        if stats.kept_llm:
+            line += f", kept existing LLM labels {stats.kept_llm}"
+    if stats.left_untriaged:
+        line += f"\n  daily budget cap reached: {stats.left_untriaged} messages left untriaged for the next run"
+    elif stats.skipped_budget_batches:
         line += f"\n  daily budget cap reached: {stats.skipped_budget_batches} batches skipped"
     return line
 

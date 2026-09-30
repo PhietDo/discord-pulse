@@ -60,6 +60,8 @@ class TriageStats:
     jev_labeled: int = 0
     escalated: int = 0
     classifier_failed: int = 0
+    kept_llm: int = 0
+    left_untriaged: int = 0
 
 
 def load_prompt() -> str:
@@ -171,6 +173,18 @@ def _classify_stage(
     states = json.loads(build_batch_input(conn, rows))["messages"]
     by_id = {r["id"]: r for r in rows}
 
+    # Messages that already carry LLM-assigned topics: a force re-triage must not
+    # blow those away with a Jev-only row that has topics = [].
+    keep: set[str] = set()
+    ids = list(by_id)
+    if ids:
+        placeholders = ",".join("?" for _ in ids)
+        existing = conn.execute(
+            f"SELECT message_id, topics FROM triage WHERE message_id IN ({placeholders}) AND labeler = 'llm'",
+            ids,
+        ).fetchall()
+        keep = {r["message_id"] for r in existing if r["topics"] != "[]"}
+
     def call(state: dict) -> tuple[str, ClassifyResponse | None, str | None]:
         mid = state["message_id"]
         if stop.is_set():
@@ -185,6 +199,7 @@ def _classify_stage(
 
     escalate: list[sqlite3.Row] = []
     p_by_id: dict[str, float] = {}
+    rule_escalated = 0
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         futures = [pool.submit(call, s) for s in states]
         for fut in as_completed(futures):
@@ -195,10 +210,12 @@ def _classify_stage(
             if error == "failed":
                 stats.classifier_failed += 1
                 if row["is_team"]:
+                    if mid in keep:
+                        continue
                     now = to_iso(datetime.now(timezone.utc))
                     with llm.db_lock, conn:
                         conn.execute(_INSERT, (
-                            mid, 0, 1.0, "other", "[]", 0, QUESTIONS_VERSION,
+                            mid, 0, 1.0, "other", "[]", 0, "staff-rule",
                             None, now, 0.0, None, "rule",
                         ))
                     stats.triaged += 1
@@ -209,6 +226,10 @@ def _classify_stage(
             p_by_id[mid] = result.needs_reply_p
             if not row["is_team"] and needs_escalation(result, cfg):
                 escalate.append(row)
+                rule_escalated += 1
+                continue
+            if mid in keep:
+                stats.kept_llm += 1
                 continue
             now = to_iso(datetime.now(timezone.utc))
             with llm.db_lock, conn:
@@ -220,7 +241,7 @@ def _classify_stage(
             stats.jev_labeled += 1
             stats.triaged += 1
     escalate.sort(key=lambda r: (r["created_at"], r["id"]), reverse=True)
-    stats.escalated = len(escalate)
+    stats.escalated = rule_escalated
     return escalate, p_by_id
 
 
@@ -243,10 +264,12 @@ def run_triage(
     cfg = llm.config.classifier
     p_by_id: dict[str, float] = {}
     if rows and cfg is not None and cfg.enabled and llm.has_classifier:
+        total_selected = len(rows)
         rows, p_by_id = _classify_stage(conn, llm, rows, cfg, classify_concurrency, stats, stop)
         if stop.is_set():
             # Unfinished messages stay untriaged and are retried on the next run.
             stats.skipped_budget_batches += 1
+            stats.left_untriaged = total_selected - stats.triaged
             return stats
 
     batches = [rows[i : i + batch_size] for i in range(0, len(rows), batch_size)]
@@ -275,6 +298,7 @@ def run_triage(
             ids, resp, error = fut.result()
             if error == "budget":
                 stats.skipped_budget_batches += 1
+                stats.left_untriaged += len(ids)
                 continue
             if error == "failed":
                 stats.failed_batches += 1

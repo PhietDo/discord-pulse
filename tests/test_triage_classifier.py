@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 
 from pulse.agents.base import BackendResult, ProviderError
 from pulse.agents.classifier import QUESTIONS_VERSION
@@ -6,7 +7,7 @@ from pulse.agents.triage import run_triage
 from pulse.db import connect
 from pulse.store import upsert_messages
 from tests.fakes import (
-    FakeBackend, FakeClassifier, classifier_config, jev_result, make_config, make_llm, msg,
+    T0, FakeBackend, FakeClassifier, classifier_config, jev_result, make_config, make_llm, msg,
 )
 
 TEAM = frozenset({"t1"})
@@ -104,6 +105,7 @@ def test_staff_message_is_neutral_even_when_classifier_fails():
     assert backend.calls == []
     r = rows(conn)["s1"]
     assert (r["labeler"], r["sentiment"], r["kind"], r["needs_reply"], r["needs_reply_p"]) == ("rule", 0, "other", 0, 0.0)
+    assert r["prompt_version"] == "staff-rule"
     assert stats.classifier_failed == 1
 
 
@@ -116,12 +118,66 @@ def test_budget_hit_in_classifier_stage_stops_triage():
     assert stats.triaged == 0
 
 
+def test_classifier_failures_are_not_counted_as_escalations():
+    fc = FakeClassifier(handler=lambda state: ProviderError("400"))
+    conn, backend, fc, llm = setup(
+        [msg("m1", "good morning"), msg("m2", "good evening", minutes=1)], classifier=fc
+    )
+    stats = run_triage(conn, llm)
+    assert stats.classifier_failed == 2
+    assert stats.escalated == 0
+    assert llm_ids(backend) == {"m1", "m2"}
+
+
 def test_disabled_classifier_uses_llm_only():
     conn, backend, fc, llm = setup([msg("m1", "good morning")], enabled=False)
     run_triage(conn, llm)
     assert fc.calls == []
     assert llm_ids(backend) == {"m1"}
     assert rows(conn)["m1"]["labeler"] == "llm"
+
+
+def test_force_retriage_keeps_existing_llm_topics():
+    conn = connect(":memory:")
+    upsert_messages(conn, [msg("m1", "good morning")], TEAM)
+    backend = FakeBackend(handler=llm_echo)
+    fc = FakeClassifier(handler=jev_by_content)
+
+    disabled_config = make_config(classifier=classifier_config(enabled=False))
+    llm_disabled = make_llm(conn, disabled_config, backend, classifier=fc)
+    run_triage(conn, llm_disabled)
+    first = rows(conn)["m1"]
+    assert (first["labeler"], json.loads(first["topics"])) == ("llm", ["install"])
+    calls_before = len(backend.calls)
+
+    enabled_config = make_config(classifier=classifier_config(enabled=True))
+    llm_enabled = make_llm(conn, enabled_config, backend, classifier=fc)
+    stats = run_triage(conn, llm_enabled, since=T0 - timedelta(days=1), force=True)
+
+    r = rows(conn)["m1"]
+    assert (r["labeler"], json.loads(r["topics"])) == ("llm", ["install"])
+    assert stats.kept_llm == 1
+    assert len(backend.calls) == calls_before
+
+
+def test_budget_cutoff_mid_stage_a_keeps_finished_rows():
+    conn = connect(":memory:")
+    messages = [msg(f"m{i}", "good morning", minutes=i) for i in range(4)]
+    upsert_messages(conn, messages, TEAM)
+    backend = FakeBackend(handler=llm_echo)
+    fc = FakeClassifier(handler=lambda state: jev_result(cost=0.00002))
+    config = make_config(daily_usd_cap=0.00004, classifier=classifier_config(enabled=True))
+    llm = make_llm(conn, config, backend, classifier=fc)
+
+    stats = run_triage(conn, llm, classify_concurrency=1)
+
+    written = rows(conn)
+    assert len(written) == 2
+    assert all(r["labeler"] == "jev" for r in written.values())
+    assert backend.calls == []
+    assert stats.left_untriaged == 2
+    statuses = [r["status"] for r in conn.execute("SELECT status FROM agent_runs WHERE agent = 'classifier'")]
+    assert "skipped_budget" in statuses
 
 
 def test_escalated_messages_are_batched_newest_first():

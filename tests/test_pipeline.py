@@ -125,3 +125,14 @@ def test_format_triage_reports_jev_split():
 
 def test_format_triage_without_jev_has_no_jev_line():
     assert "jev" not in format_triage(TriageStats(triaged=4))
+
+
+def test_format_triage_reports_kept_llm_labels():
+    text = format_triage(TriageStats(triaged=5, jev_labeled=3, escalated=1, kept_llm=2))
+    assert "jev: labeled 3, escalated to LLM 1, classifier failures 0, kept existing LLM labels 2" in text
+
+
+def test_format_triage_shows_left_untriaged_instead_of_skipped_batches():
+    text = format_triage(TriageStats(triaged=2, skipped_budget_batches=1, left_untriaged=5))
+    assert "daily budget cap reached: 5 messages left untriaged for the next run" in text
+    assert "batches skipped" not in text
