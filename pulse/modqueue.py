@@ -31,6 +31,22 @@ def _team_replied(conn: sqlite3.Connection, message_id: str, thread_id: str | No
     return row is not None
 
 
+def list_open(conn: sqlite3.Connection, limit: int = 20) -> list[sqlite3.Row]:
+    """Open items, highest priority first: frustrated, then Jev's needs_reply
+    probability (an LLM-only row counts as its 0/1 label), then oldest."""
+    return conn.execute(
+        "SELECT q.reason, m.id AS message_id, m.guild_id, m.channel_id, m.channel_name, m.author_name,"
+        " m.content, m.created_at, t.needs_reply_p"
+        " FROM mod_queue q JOIN messages m ON m.id = q.message_id"
+        " LEFT JOIN triage t ON t.message_id = m.id"
+        " WHERE q.status = 'open'"
+        " ORDER BY (q.reason = 'frustrated') DESC, COALESCE(t.needs_reply_p, t.needs_reply, 0) DESC,"
+        " m.created_at ASC, m.id ASC"
+        " LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
 def refresh_mod_queue(conn: sqlite3.Connection, config: Config, now: datetime) -> ModQueueStats:
     stats = ModQueueStats()
     now_iso = to_iso(now)

@@ -82,3 +82,29 @@ def test_ingest_filters_to_configured_channels_and_their_threads(tmp_path):
     src = FileSource(tmp_path)
     by_id = {m.id: m for m in src.fetch()}
     assert by_id["3001"].parent_channel_id == "100"
+
+
+from datetime import timedelta
+
+from pulse.modqueue import list_open, refresh_mod_queue
+from pulse.pipeline import format_queue
+from pulse.store import upsert_messages
+from tests.fakes import T0, msg, set_triage
+
+
+def test_format_queue_shows_author_channel_age_and_jump_link():
+    conn = connect(":memory:")
+    upsert_messages(conn, [msg("q1", "how do I rotate keys?")], frozenset({"t1"}))
+    set_triage(conn, "q1", needs_reply=True)
+    now = T0 + timedelta(hours=24)
+    refresh_mod_queue(conn, make_config(), now)
+    text = format_queue(list_open(conn), now)
+    assert "unanswered" in text
+    assert "alice in #help" in text
+    assert "24h ago" in text
+    assert "how do I rotate keys?" in text
+    assert "https://discord.com/channels/900/100/q1" in text
+
+
+def test_format_queue_when_empty():
+    assert format_queue([], T0) == "mod queue: nothing open"

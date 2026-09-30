@@ -8,9 +8,9 @@ from datetime import date, datetime, timezone
 from pulse.agents.triage import run_triage
 from pulse.config import ConfigError, load_config
 from pulse.db import connect
-from pulse.modqueue import refresh_mod_queue
+from pulse.modqueue import list_open, refresh_mod_queue
 from pulse.pipeline import (
-    build_llm, format_ingest, format_modqueue, format_report, format_triage, ingest, run_pipeline,
+    build_llm, format_ingest, format_modqueue, format_queue, format_report, format_triage, ingest, run_pipeline,
 )
 from pulse.sources.file_source import FileSource
 
@@ -24,6 +24,8 @@ def _parser() -> argparse.ArgumentParser:
     triage.add_argument("--since", type=date.fromisoformat, help="only messages on or after YYYY-MM-DD")
     triage.add_argument("--force", action="store_true", help="re-triage messages in range")
     sub.add_parser("modqueue", help="refresh the mod queue")
+    queue = sub.add_parser("queue", help="list open mod queue items, highest priority first")
+    queue.add_argument("--limit", type=int, default=20)
     sub.add_parser("pipeline", help="ingest, triage, then refresh the mod queue")
     return parser
 
@@ -50,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
         print(format_triage(run_triage(conn, build_llm(conn, config), since=since, force=args.force)))
     elif args.command == "modqueue":
         print(format_modqueue(refresh_mod_queue(conn, config, now)))
+    elif args.command == "queue":
+        print(format_queue(list_open(conn, args.limit), now))
     elif args.command == "pipeline":
         print(format_report(run_pipeline(conn, config, build_llm(conn, config), now=now)))
     return 0

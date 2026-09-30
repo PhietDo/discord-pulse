@@ -9,6 +9,8 @@ from pulse.agents.base import Backend
 from pulse.agents.llm import LLMClient
 from pulse.agents.triage import TriageStats, run_triage
 from pulse.config import Config
+from pulse.links import jump_link
+from pulse.models import from_iso
 from pulse.modqueue import ModQueueStats, refresh_mod_queue
 from pulse.sources.base import Source
 from pulse.sources.file_source import FileSource
@@ -95,3 +97,20 @@ def format_report(report: PipelineReport) -> str:
         format_triage(report.triage),
         format_modqueue(report.modqueue),
     ])
+
+
+def format_queue(items, now: datetime) -> str:
+    if not items:
+        return "mod queue: nothing open"
+    lines = [f"mod queue: {len(items)} open, highest priority first"]
+    for i, it in enumerate(items, start=1):
+        age_h = (now - from_iso(it["created_at"])).total_seconds() / 3600
+        p = it["needs_reply_p"]
+        priority = f" p={p:.2f}" if p is not None else ""
+        text = " ".join(it["content"].split())
+        lines.append(
+            f"{i:>2}. [{it['reason']}{priority}] {it['author_name']} in #{it['channel_name']},"
+            f" {age_h:.0f}h ago: {text[:90]}"
+        )
+        lines.append(f"    {jump_link(it['guild_id'], it['channel_id'], it['message_id'])}")
+    return "\n".join(lines)

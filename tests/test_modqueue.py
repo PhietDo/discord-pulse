@@ -118,3 +118,33 @@ def test_team_reply_in_thread_started_from_question_counts():
     conn = db(msg("q1"), msg("r1", minutes=30, author_id="t1", thread_id="q1"))
     set_triage(conn, "q1", needs_reply=True)
     assert refresh_mod_queue(conn, CONFIG, NOW).opened == 0
+
+
+from pulse.modqueue import list_open
+
+
+def set_p(conn, message_id, p):
+    with conn:
+        conn.execute("UPDATE triage SET needs_reply_p = ? WHERE message_id = ?", (p, message_id))
+
+
+def test_list_open_orders_frustrated_then_probability_then_age():
+    conn = db(msg("a", minutes=0), msg("b", minutes=10), msg("c", minutes=20), msg("d", minutes=30))
+    for mid in ("a", "b", "c"):
+        set_triage(conn, mid, needs_reply=True)
+    set_triage(conn, "d", sentiment=-2)
+    set_p(conn, "a", 0.72)
+    set_p(conn, "b", 0.95)
+    # c has no probability (LLM-only row with needs_reply=1), so it ranks as 1.0
+    refresh_mod_queue(conn, CONFIG, NOW)
+    assert [r["message_id"] for r in list_open(conn)] == ["d", "c", "b", "a"]
+    assert len(list_open(conn, limit=2)) == 2
+
+
+def test_list_open_excludes_closed_items():
+    conn = db(msg("q1"))
+    set_triage(conn, "q1", needs_reply=True)
+    refresh_mod_queue(conn, CONFIG, NOW)
+    with conn:
+        conn.execute("UPDATE mod_queue SET status = 'dismissed'")
+    assert list_open(conn) == []
