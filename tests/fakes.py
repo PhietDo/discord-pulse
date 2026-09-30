@@ -63,3 +63,38 @@ def set_triage(conn, message_id: str, *, sentiment: int = 0, needs_reply: bool =
             " needs_reply, prompt_version, created_at) VALUES (?, ?, 0.9, ?, ?, ?, 'test', ?)",
             (message_id, sentiment, kind, json.dumps([]), int(needs_reply), to_iso(T0)),
         )
+
+
+from pulse.agents.base import BackendResult  # noqa: E402
+from pulse.agents.llm import LLMClient  # noqa: E402
+
+FIXED_NOW = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
+
+
+class FakeBackend:
+    """Replays queued responses, then falls back to handler(user) -> BackendResult.
+
+    A queued item may be a BackendResult, an Exception (raised), or a callable
+    taking the user prompt and returning either.
+    """
+
+    def __init__(self, responses=None, handler=None):
+        self.responses = list(responses or [])
+        self.handler = handler
+        self.calls: list[dict] = []
+
+    def complete(self, model, system, user, schema, schema_name):
+        self.calls.append({"model": model, "system": system, "user": user, "schema_name": schema_name})
+        item = self.responses.pop(0) if self.responses else self.handler
+        if item is None:
+            raise AssertionError("FakeBackend has no response queued")
+        if callable(item) and not isinstance(item, BackendResult):
+            item = item(user)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def make_llm(conn, config, backend, *, sleeps=None) -> LLMClient:
+    sleeps = [] if sleeps is None else sleeps
+    return LLMClient(conn, config, {"anthropic": backend}, now=lambda: FIXED_NOW, sleep=sleeps.append)
