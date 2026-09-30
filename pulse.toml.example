@@ -1,0 +1,46 @@
+# Copy to pulse.toml. Secrets go in environment variables, never here:
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY (only for providers you use)
+
+[server]
+guild_id = "123456789012345678"
+channel_ids = []                     # empty = every channel in your exports
+team_member_ids = []                 # staff user ids; their replies count as "answered"
+
+[mod_queue]
+reply_window_hours = 12
+frustration_threshold = -2
+
+[models]                             # "provider:model"; provider = anthropic | openai | openrouter
+triage = "anthropic:claude-haiku-4-5-20251001"
+theme = "anthropic:claude-sonnet-5"
+digest = "anthropic:claude-opus-5-5"
+investigate = "anthropic:claude-sonnet-5"
+
+[budget]
+daily_usd_cap = 5.00
+
+# USD per million tokens. Required for every non-OpenRouter model above.
+# These values are placeholders: fill in current prices.
+[pricing."anthropic:claude-haiku-4-5-20251001"]
+input = 1.00
+output = 5.00
+cache_read = 0.10
+
+[pricing."anthropic:claude-sonnet-5"]
+input = 3.00
+output = 15.00
+cache_read = 0.30
+
+[pricing."anthropic:claude-opus-5-5"]
+input = 5.00
+output = 25.00
+cache_read = 0.50
+
+# [[launches]]
+# name = "v2.0 SDK"
+# date = "2026-09-15"
+# keywords = ["v2", "migration"]
+
+# [paths]
+# db = "pulse.db"
+# imports = "imports"
