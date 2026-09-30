@@ -1,6 +1,6 @@
 import pytest
 
-from pulse.config import ConfigError, ModelRef, load_config
+from pulse.config import ClassifierConfig, ConfigError, ModelRef, Price, load_config
 
 BASE = '''
 [server]
@@ -131,3 +131,73 @@ def test_paths_section_overrides_defaults(tmp_path):
 def test_missing_config_file_hints_example(tmp_path):
     with pytest.raises(ConfigError, match="pulse.toml.example"):
         load_config(tmp_path / "pulse.toml", env=ENV)
+
+
+CLASSIFIER = '''
+[classifier]
+enabled = true
+model = "jev:jev-latest"
+needs_reply_threshold = 0.75
+min_confidence = 0.5
+escalate_kinds = ["bug", "docs"]
+
+[pricing."jev:jev-latest"]
+per_request = 0.0000387
+'''
+
+
+def test_classifier_section_parsed(tmp_path):
+    cfg = load_config(write(tmp_path, BASE + CLASSIFIER), env=ENV)
+    assert cfg.classifier == ClassifierConfig(
+        enabled=True, model=ModelRef("jev", "jev-latest"), needs_reply_threshold=0.75,
+        min_confidence=0.5, escalate_kinds=("bug", "docs"),
+    )
+    assert cfg.pricing["jev:jev-latest"] == Price(0.0, 0.0, 0.0, per_request=0.0000387)
+
+
+def test_classifier_absent_is_none(tmp_path):
+    assert load_config(write(tmp_path, BASE), env=ENV).classifier is None
+
+
+def test_classifier_defaults(tmp_path):
+    cfg = load_config(write(tmp_path, BASE + '\n[classifier]\nenabled = true\n'), env=ENV)
+    assert cfg.classifier.model == ModelRef("jev", "jev-latest")
+    assert cfg.classifier.needs_reply_threshold == 0.7
+    assert cfg.classifier.min_confidence == 0.6
+    assert cfg.classifier.escalate_kinds == ("bug", "docs", "feature_request", "praise")
+
+
+def test_enabled_classifier_requires_openrouter_key(tmp_path):
+    text = BASE.replace('investigate = "openrouter:anthropic/claude-sonnet-5"', 'investigate = "anthropic:claude-opus-5-5"')
+    env = dict(ENV)
+    del env["OPENROUTER_API_KEY"]
+    with pytest.raises(ConfigError, match="OPENROUTER_API_KEY.*classifier"):
+        load_config(write(tmp_path, text + CLASSIFIER), env=env)
+
+
+def test_disabled_classifier_needs_no_key(tmp_path):
+    text = BASE.replace('investigate = "openrouter:anthropic/claude-sonnet-5"', 'investigate = "anthropic:claude-opus-5-5"')
+    env = dict(ENV)
+    del env["OPENROUTER_API_KEY"]
+    cfg = load_config(write(tmp_path, text + CLASSIFIER.replace("enabled = true", "enabled = false")), env=env)
+    assert cfg.classifier.enabled is False
+
+
+def test_classifier_rejects_non_jev_provider(tmp_path):
+    with pytest.raises(ConfigError, match="provider"):
+        load_config(write(tmp_path, BASE + CLASSIFIER.replace('model = "jev:jev-latest"', 'model = "openai:gpt-x"')), env=ENV)
+
+
+def test_classifier_rejects_unknown_kind(tmp_path):
+    with pytest.raises(ConfigError, match="escalate_kinds"):
+        load_config(write(tmp_path, BASE + CLASSIFIER.replace('["bug", "docs"]', '["bug", "rants"]')), env=ENV)
+
+
+def test_classifier_rejects_threshold_out_of_range(tmp_path):
+    with pytest.raises(ConfigError, match="needs_reply_threshold"):
+        load_config(write(tmp_path, BASE + CLASSIFIER.replace("0.75", "1.5")), env=ENV)
+
+
+def test_llm_agents_still_reject_jev_provider(tmp_path):
+    with pytest.raises(ConfigError, match="provider"):
+        load_config(write(tmp_path, BASE.replace('theme = "openai:gpt-x"', 'theme = "jev:jev-latest"')), env=ENV)

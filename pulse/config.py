@@ -8,13 +8,18 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Mapping
 
+from pulse.models import KINDS
+
 PROVIDERS = ("anthropic", "openai", "openrouter")
+CLASSIFIER_PROVIDERS = ("jev",)
 AGENTS = ("triage", "theme", "digest", "investigate")
 KEY_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "jev": "OPENROUTER_API_KEY",
 }
+DEFAULT_ESCALATE_KINDS = ("bug", "docs", "feature_request", "praise")
 
 
 class ConfigError(Exception):
@@ -27,11 +32,11 @@ class ModelRef:
     model: str
 
     @classmethod
-    def parse(cls, value: str) -> ModelRef:
+    def parse(cls, value: str, providers: tuple[str, ...] = PROVIDERS) -> ModelRef:
         provider, sep, model = value.partition(":")
-        if not sep or not model or provider not in PROVIDERS:
+        if not sep or not model or provider not in providers:
             raise ConfigError(
-                f"model must be 'provider:model' with provider in {PROVIDERS}, got {value!r}"
+                f"model must be 'provider:model' with provider in {providers}, got {value!r}"
             )
         return cls(provider, model)
 
@@ -41,11 +46,12 @@ class ModelRef:
 
 @dataclass(frozen=True)
 class Price:
-    """USD per million tokens."""
+    """USD per million tokens, or per request for request-priced models (Jev)."""
 
     input: float
     output: float
     cache_read: float = 0.0
+    per_request: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,15 @@ class Launch:
     name: str
     date: str
     keywords: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ClassifierConfig:
+    enabled: bool
+    model: ModelRef
+    needs_reply_threshold: float = 0.7
+    min_confidence: float = 0.6
+    escalate_kinds: tuple[str, ...] = DEFAULT_ESCALATE_KINDS
 
 
 @dataclass(frozen=True)
@@ -68,17 +83,20 @@ class Config:
     launches: tuple[Launch, ...]
     db_path: Path
     imports_dir: Path
+    classifier: ClassifierConfig | None = None
 
 
 def _price(name: str, raw: Any) -> Price:
     try:
+        if "per_request" in raw:
+            return Price(input=0.0, output=0.0, per_request=float(raw["per_request"]))
         return Price(
             input=float(raw["input"]),
             output=float(raw["output"]),
             cache_read=float(raw.get("cache_read", 0.0)),
         )
     except (KeyError, TypeError, ValueError) as e:
-        raise ConfigError(f'[pricing."{name}"] needs numeric input and output: {e}') from e
+        raise ConfigError(f'[pricing."{name}"] needs numeric input and output (or per_request): {e}') from e
 
 
 def _launch(raw: Any) -> Launch:
@@ -88,6 +106,36 @@ def _launch(raw: Any) -> Launch:
         return Launch(str(raw["name"]), raw["date"], tuple(str(k) for k in raw.get("keywords", [])))
     except (KeyError, TypeError, ValueError) as e:
         raise ConfigError(f"launch {name!r}: needs a name and a YYYY-MM-DD date") from e
+
+
+def _unit_interval(name: str, value: Any) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"[classifier] {name} must be a number between 0 and 1") from e
+    if not 0.0 <= v <= 1.0:
+        raise ConfigError(f"[classifier] {name} must be between 0 and 1, got {v}")
+    return v
+
+
+def _classifier(raw: Any, env: Mapping[str, str]) -> ClassifierConfig | None:
+    if not raw:
+        return None
+    model = ModelRef.parse(str(raw.get("model", "jev:jev-latest")), CLASSIFIER_PROVIDERS)
+    kinds = tuple(str(k) for k in raw.get("escalate_kinds", DEFAULT_ESCALATE_KINDS))
+    unknown = [k for k in kinds if k not in KINDS]
+    if unknown:
+        raise ConfigError(f"[classifier] escalate_kinds has unknown kinds {unknown}; allowed {list(KINDS)}")
+    cfg = ClassifierConfig(
+        enabled=bool(raw.get("enabled", False)),
+        model=model,
+        needs_reply_threshold=_unit_interval("needs_reply_threshold", raw.get("needs_reply_threshold", 0.7)),
+        min_confidence=_unit_interval("min_confidence", raw.get("min_confidence", 0.6)),
+        escalate_kinds=kinds,
+    )
+    if cfg.enabled and not env.get(KEY_ENV[model.provider]):
+        raise ConfigError(f"{KEY_ENV[model.provider]} must be set because the classifier {model} is enabled")
+    return cfg
 
 
 def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Config:
@@ -136,4 +184,5 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Confi
         launches=tuple(_launch(l) for l in raw.get("launches", [])),
         db_path=base / paths.get("db", "pulse.db"),
         imports_dir=base / paths.get("imports", "imports"),
+        classifier=_classifier(raw.get("classifier"), env),
     )
