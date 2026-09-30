@@ -5,7 +5,7 @@ Status: Draft, awaiting review
 
 ## 1. Purpose
 
-An internal, single-tenant tool for a DevRel / community lead who administers or moderates one product's Discord server. It answers three questions:
+An internal, single-tenant tool for a DevRel / community lead who follows one product's Discord server. It answers three questions:
 
 1. Is a launch, feature, or release landing well? (sentiment over time and around launch dates)
 2. What recurring pain points are users hitting? (bugs, docs confusion, setup friction, missing features), with evidence messages
