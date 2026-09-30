@@ -52,7 +52,10 @@ CREATE TABLE IF NOT EXISTS triage (
     needs_reply INTEGER NOT NULL,
     prompt_version TEXT NOT NULL,
     run_id INTEGER REFERENCES agent_runs(id),
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    needs_reply_p REAL,
+    kind_confidence REAL,
+    labeler TEXT NOT NULL DEFAULT 'llm'
 );
 
 CREATE TABLE IF NOT EXISTS themes (
@@ -121,6 +124,22 @@ CREATE TABLE IF NOT EXISTS investigations (
 );
 """
 
+# Columns added after Plan 1. CREATE TABLE IF NOT EXISTS leaves an existing table
+# untouched, so databases created earlier get them via ALTER TABLE.
+_TRIAGE_ADDED_COLUMNS = (
+    ("needs_reply_p", "REAL"),
+    ("kind_confidence", "REAL"),
+    ("labeler", "TEXT NOT NULL DEFAULT 'llm'"),
+)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(triage)")}
+    with conn:
+        for name, decl in _TRIAGE_ADDED_COLUMNS:
+            if name not in have:
+                conn.execute(f"ALTER TABLE triage ADD COLUMN {name} {decl}")
+
 
 def connect(path: str | Path) -> sqlite3.Connection:
     # check_same_thread=False: LLMClient logs agent_runs from worker threads,
@@ -134,4 +153,5 @@ def connect(path: str | Path) -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn

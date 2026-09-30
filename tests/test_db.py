@@ -55,3 +55,48 @@ def test_busy_timeout_set(tmp_path):
     conn = connect(tmp_path / "p.db")
     timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
     assert timeout == 5000
+
+
+OLD_SCHEMA = """
+CREATE TABLE messages (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL,
+  channel_name TEXT NOT NULL DEFAULT '', thread_id TEXT, author_id TEXT NOT NULL, author_name TEXT NOT NULL,
+  author_avatar_url TEXT, is_team INTEGER NOT NULL DEFAULT 0, is_bot INTEGER NOT NULL DEFAULT 0,
+  content TEXT NOT NULL, created_at TEXT NOT NULL, edited_at TEXT, reply_to_id TEXT, source TEXT NOT NULL);
+CREATE TABLE triage (message_id TEXT PRIMARY KEY, sentiment INTEGER NOT NULL, confidence REAL NOT NULL,
+  kind TEXT NOT NULL, topics TEXT NOT NULL, needs_reply INTEGER NOT NULL, prompt_version TEXT NOT NULL,
+  run_id INTEGER, created_at TEXT NOT NULL);
+INSERT INTO messages (id, guild_id, channel_id, author_id, author_name, content, created_at, source)
+  VALUES ('m', 'g', 'c', 'a', 'n', 'hi', 'x', 'file');
+INSERT INTO triage VALUES ('m', -1, 0.9, 'bug', '[]', 1, 'triage-v2', NULL, 'x');
+"""
+
+
+def triage_columns(conn):
+    return {r["name"] for r in conn.execute("PRAGMA table_info(triage)")}
+
+
+def test_fresh_db_has_classifier_columns():
+    assert {"needs_reply_p", "kind_confidence", "labeler"} <= triage_columns(connect(":memory:"))
+
+
+def test_old_triage_table_is_migrated_in_place(tmp_path):
+    path = tmp_path / "old.db"
+    raw = sqlite3.connect(path)
+    raw.executescript(OLD_SCHEMA)
+    raw.commit()
+    raw.close()
+
+    conn = connect(path)
+
+    assert {"needs_reply_p", "kind_confidence", "labeler"} <= triage_columns(conn)
+    row = conn.execute("SELECT * FROM triage WHERE message_id = 'm'").fetchone()
+    assert (row["sentiment"], row["kind"], row["labeler"], row["needs_reply_p"], row["kind_confidence"]) == (
+        -1, "bug", "llm", None, None
+    )
+
+
+def test_migration_is_idempotent(tmp_path):
+    path = tmp_path / "p.db"
+    connect(path).close()
+    connect(path).close()
+    assert "labeler" in triage_columns(connect(path))
