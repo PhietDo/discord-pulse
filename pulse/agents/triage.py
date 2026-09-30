@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,16 +59,20 @@ def load_prompt() -> str:
     return (Path(__file__).parent / "prompts" / "triage_v1.md").read_text(encoding="utf-8")
 
 
-def select_untriaged(conn: sqlite3.Connection, since: datetime | None = None) -> list[sqlite3.Row]:
+def select_untriaged(
+    conn: sqlite3.Connection, since: datetime | None = None, force: bool = False
+) -> list[sqlite3.Row]:
     sql = (
         "SELECT m.* FROM messages m LEFT JOIN triage t ON t.message_id = m.id"
-        " WHERE t.message_id IS NULL AND m.is_bot = 0 AND trim(m.content) != ''"
+        " WHERE m.is_bot = 0 AND trim(m.content) != ''"
     )
+    if not force:
+        sql += " AND t.message_id IS NULL"
     params: list[str] = []
     if since is not None:
         sql += " AND m.created_at >= ?"
         params.append(to_iso(since))
-    sql += " ORDER BY m.created_at, m.id"
+    sql += " ORDER BY m.created_at DESC, m.id DESC"
     return conn.execute(sql, params).fetchall()
 
 
@@ -134,23 +139,19 @@ def run_triage(
     since: datetime | None = None,
     force: bool = False,
 ) -> TriageStats:
-    if force:
-        with conn:
-            if since is None:
-                conn.execute("DELETE FROM triage")
-            else:
-                conn.execute(
-                    "DELETE FROM triage WHERE message_id IN (SELECT id FROM messages WHERE created_at >= ?)",
-                    (to_iso(since),),
-                )
-
-    rows = select_untriaged(conn, since)
+    rows = select_untriaged(conn, since, force=force)
     batches = [rows[i : i + batch_size] for i in range(0, len(rows), batch_size)]
     jobs = [({r["id"] for r in b}, build_batch_input(conn, b)) for b in batches]
     system = load_prompt()
 
+    # Set once any batch hits the budget cap, so later batches skip the call
+    # entirely instead of each recording their own skipped_budget row.
+    stop = threading.Event()
+
     def call(job: tuple[set[str], str]) -> tuple[set[str], LLMResponse | None, str | None]:
         ids, user = job
+        if stop.is_set():
+            return ids, None, "budget"
         try:
             resp = llm.complete(
                 "triage", system, user, TRIAGE_SCHEMA, SCHEMA_NAME,
@@ -158,32 +159,33 @@ def run_triage(
             )
             return ids, resp, None
         except BudgetExceeded:
+            stop.set()
             return ids, None, "budget"
         except LLMError:
             return ids, None, "failed"
 
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
-        outcomes = list(pool.map(call, jobs))
-
     stats = TriageStats()
-    now = to_iso(datetime.now(timezone.utc))
-    for ids, resp, error in outcomes:
-        if error == "budget":
-            stats.skipped_budget_batches += 1
-            continue
-        if error == "failed":
-            stats.failed_batches += 1
-            continue
-        results = parse_results(resp.data, ids)
-        with conn:
-            conn.executemany(
-                "INSERT OR REPLACE INTO triage (message_id, sentiment, confidence, kind, topics,"
-                " needs_reply, prompt_version, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (r.message_id, r.sentiment, r.confidence, r.kind, json.dumps(list(r.topics)),
-                     int(r.needs_reply), PROMPT_VERSION, resp.run_id, now)
-                    for r in results
-                ],
-            )
-        stats.triaged += len(results)
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        futures = [pool.submit(call, job) for job in jobs]
+        for fut in as_completed(futures):
+            ids, resp, error = fut.result()
+            if error == "budget":
+                stats.skipped_budget_batches += 1
+                continue
+            if error == "failed":
+                stats.failed_batches += 1
+                continue
+            results = parse_results(resp.data, ids)
+            now = to_iso(datetime.now(timezone.utc))
+            with llm.db_lock, conn:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO triage (message_id, sentiment, confidence, kind, topics,"
+                    " needs_reply, prompt_version, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (r.message_id, r.sentiment, r.confidence, r.kind, json.dumps(list(r.topics)),
+                         int(r.needs_reply), PROMPT_VERSION, resp.run_id, now)
+                        for r in results
+                    ],
+                )
+            stats.triaged += len(results)
     return stats

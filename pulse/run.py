@@ -29,7 +29,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.command == "triage" and args.force and not args.since:
+        parser.error("triage --force requires --since")
     try:
         config = load_config(args.config)
     except ConfigError as e:

@@ -1,6 +1,8 @@
 import shutil
 from pathlib import Path
 
+import pytest
+
 from pulse.db import connect
 from pulse.run import main
 
@@ -42,3 +44,11 @@ def test_ingest_command_imports_files(tmp_path, monkeypatch, capsys):
     conn = connect(tmp_path / "pulse.db")
     assert conn.execute("SELECT count(*) FROM messages").fetchone()[0] == 3
     assert conn.execute("SELECT is_team FROM messages WHERE id = '1002'").fetchone()[0] == 1
+
+
+def test_triage_force_without_since_exits_with_usage_error(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--config", str(tmp_path / "pulse.toml"), "triage", "--force"])
+    assert exc_info.value.code == 2

@@ -111,3 +111,50 @@ def test_force_since_retriages_only_the_range():
     assert stats.triaged == 1
     assert list(payload_items(backend.calls[-1])) == ["new"]
     assert set(triage_rows(conn)) == {"old", "new"}
+
+
+def test_triage_processes_newest_first():
+    conn, backend, llm = setup([msg(f"m{i}", minutes=i) for i in range(3)])
+    run_triage(conn, llm, batch_size=1, concurrency=1)
+    assert list(payload_items(backend.calls[0])) == ["m2"]
+
+
+def test_budget_stop_records_at_most_one_skipped_row():
+    conn, backend, llm = setup([msg(f"m{i}", minutes=i) for i in range(5)], daily_usd_cap=0.0)
+    stats = run_triage(conn, llm, batch_size=1, concurrency=1)
+    assert stats.skipped_budget_batches == 5
+    rows = conn.execute("SELECT * FROM agent_runs WHERE status = 'skipped_budget'").fetchall()
+    assert len(rows) == 1
+
+
+def test_completed_batches_survive_a_later_failure():
+    conn = connect(":memory:")
+    upsert_messages(conn, [msg("m1", minutes=0), msg("m2", minutes=1), msg("m3", minutes=2)], TEAM)
+
+    def handler(user):
+        if "m1" in user:
+            raise RuntimeError("boom")
+        return echo(user)
+
+    backend = FakeBackend(handler=handler)
+    llm = make_llm(conn, make_config(), backend)
+    try:
+        run_triage(conn, llm, batch_size=1, concurrency=1)
+        raised = False
+    except RuntimeError:
+        raised = True
+    assert raised
+    assert set(triage_rows(conn)) == {"m2", "m3"}
+
+
+def test_force_with_budget_exhausted_keeps_labels():
+    conn, backend, llm = setup([msg("m1", minutes=0), msg("m2", minutes=1)])
+    run_triage(conn, llm)
+    assert stats_triaged_count(conn) == 2
+    broke_llm = make_llm(conn, make_config(daily_usd_cap=0.0), backend)
+    run_triage(conn, broke_llm, force=True, since=T0)
+    assert stats_triaged_count(conn) == 2
+
+
+def stats_triaged_count(conn):
+    return conn.execute("SELECT count(*) FROM triage").fetchone()[0]

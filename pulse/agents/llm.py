@@ -64,6 +64,12 @@ class LLMClient:
         # Serializes this client's DB access across worker threads.
         self._lock = threading.Lock()
 
+    @property
+    def db_lock(self) -> threading.Lock:
+        """Read-only access to this client's DB lock, so callers can serialize their
+        own writes to the same connection against this client's internal writes."""
+        return self._lock
+
     def spent_today(self) -> float:
         midnight = self._now().astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         with self._lock:
