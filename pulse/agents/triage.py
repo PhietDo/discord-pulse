@@ -194,6 +194,15 @@ def _classify_stage(
                 continue
             if error == "failed":
                 stats.classifier_failed += 1
+                if row["is_team"]:
+                    now = to_iso(datetime.now(timezone.utc))
+                    with llm.db_lock, conn:
+                        conn.execute(_INSERT, (
+                            mid, 0, 1.0, "other", "[]", 0, QUESTIONS_VERSION,
+                            None, now, 0.0, None, "rule",
+                        ))
+                    stats.triaged += 1
+                    continue
                 escalate.append(row)
                 continue
             result = _staff_override(resp.result) if row["is_team"] else resp.result

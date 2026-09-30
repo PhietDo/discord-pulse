@@ -97,6 +97,16 @@ def test_classifier_failure_escalates_to_llm():
     assert (r["labeler"], r["needs_reply_p"]) == ("llm", None)
 
 
+def test_staff_message_is_neutral_even_when_classifier_fails():
+    fc = FakeClassifier(handler=lambda state: ProviderError("400"))
+    conn, backend, fc, llm = setup([msg("s1", "known issue, fix ships today", author_id="t1")], classifier=fc)
+    stats = run_triage(conn, llm)
+    assert backend.calls == []
+    r = rows(conn)["s1"]
+    assert (r["labeler"], r["sentiment"], r["kind"], r["needs_reply"], r["needs_reply_p"]) == ("rule", 0, "other", 0, 0.0)
+    assert stats.classifier_failed == 1
+
+
 def test_budget_hit_in_classifier_stage_stops_triage():
     conn, backend, fc, llm = setup([msg("m1", "it's broken"), msg("m2", "hi", minutes=1)], cap=0.0)
     stats = run_triage(conn, llm)
