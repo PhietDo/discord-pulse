@@ -18,9 +18,10 @@ import jsonschema
 from pulse.agents.base import (
     Backend, BackendResult, BudgetExceeded, LLMError, OutputInvalid, ProviderError, TransientError,
 )
+from pulse.agents.classifier import Classifier, ClassifierResult
 from pulse.config import Config, ModelRef, Price
 from pulse.models import to_iso
-from pulse.pricing import cost_usd
+from pulse.pricing import cost_usd, request_cost
 
 MAX_TRANSIENT_ATTEMPTS = 3
 MAX_VALIDATION_ATTEMPTS = 2
@@ -29,6 +30,12 @@ MAX_VALIDATION_ATTEMPTS = 2
 @dataclass(frozen=True)
 class LLMResponse:
     data: dict[str, Any]
+    run_id: int
+
+
+@dataclass(frozen=True)
+class ClassifyResponse:
+    result: ClassifierResult
     run_id: int
 
 
@@ -55,12 +62,14 @@ class LLMClient:
         *,
         now: Callable[[], datetime] | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        classifier: Classifier | None = None,
     ):
         self._conn = conn
         self._config = config
         self._backends = dict(backends)
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._sleep = sleep
+        self._classifier = classifier
         # Serializes this client's DB access across worker threads.
         self._lock = threading.Lock()
 
@@ -69,6 +78,14 @@ class LLMClient:
         """Read-only access to this client's DB lock, so callers can serialize their
         own writes to the same connection against this client's internal writes."""
         return self._lock
+
+    @property
+    def config(self) -> Config:
+        return self._config
+
+    @property
+    def has_classifier(self) -> bool:
+        return self._classifier is not None and self._config.classifier is not None
 
     def spent_today(self) -> float:
         midnight = self._now().astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -148,15 +165,53 @@ class LLMClient:
         self._record(agent, ref, started, "failed", error, usage)
         raise LLMError(f"{agent}: {error}")
 
-    def _call(self, backend: Backend, model: str, system: str, user: str, schema: dict, schema_name: str) -> BackendResult:
+    def classify(self, state: dict) -> ClassifyResponse:
+        """Ask the configured classifier (Jev) about one message state.
+
+        Same contract as complete(): budget gate, transient backoff, one retry on
+        invalid output, exactly one agent_runs row (agent "classifier").
+        """
+        cfg = self._config.classifier
+        if cfg is None or self._classifier is None:
+            raise RuntimeError("classifier not configured")
+        ref = cfg.model
+        price = self._config.pricing.get(str(ref))
+        started = self._now()
+        if self.spent_today() >= self._config.daily_usd_cap:
+            self._record("classifier", ref, started, "skipped_budget", "daily budget cap reached", _Usage())
+            raise BudgetExceeded(f"daily budget cap ${self._config.daily_usd_cap:.2f} reached")
+
+        usage = _Usage()
+        error = "no attempt made"
+        for _ in range(MAX_VALIDATION_ATTEMPTS):
+            try:
+                result = self._with_backoff(lambda: self._classifier.classify(ref.model, state))
+            except OutputInvalid as e:
+                usage.cost_usd += request_cost(price, e.reported_cost)
+                error = f"invalid output: {e}"
+                continue
+            except (TransientError, ProviderError) as e:
+                error = f"provider error: {e}"
+                break
+            usage.cost_usd += request_cost(price, result.reported_cost)
+            run_id = self._record("classifier", ref, started, "ok", None, usage)
+            return ClassifyResponse(result, run_id)
+
+        self._record("classifier", ref, started, "failed", error, usage)
+        raise LLMError(f"classifier: {error}")
+
+    def _with_backoff(self, fn: Callable[[], Any]) -> Any:
         for attempt in range(MAX_TRANSIENT_ATTEMPTS):
             try:
-                return backend.complete(model, system, user, schema, schema_name)
+                return fn()
             except TransientError:
                 if attempt == MAX_TRANSIENT_ATTEMPTS - 1:
                     raise
                 self._sleep(2**attempt)
         raise AssertionError("unreachable")
+
+    def _call(self, backend: Backend, model: str, system: str, user: str, schema: dict, schema_name: str) -> BackendResult:
+        return self._with_backoff(lambda: backend.complete(model, system, user, schema, schema_name))
 
     def _record(self, agent: str, ref: ModelRef, started: datetime, status: str, error: str | None, usage: _Usage) -> int:
         with self._lock, self._conn:

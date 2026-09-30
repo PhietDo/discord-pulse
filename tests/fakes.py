@@ -95,6 +95,45 @@ class FakeBackend:
         return item
 
 
-def make_llm(conn, config, backend, *, sleeps=None) -> LLMClient:
+from pulse.agents.classifier import ClassifierResult  # noqa: E402
+from pulse.config import ClassifierConfig  # noqa: E402
+
+
+def jev_result(p=0.1, kind="other", sentiment=0, kind_conf=0.9, sent_conf=0.9, cost=0.00002) -> ClassifierResult:
+    return ClassifierResult(
+        needs_reply_p=p, kind=kind, kind_confidence=kind_conf, sentiment=sentiment,
+        sentiment_confidence=sent_conf, reported_cost=cost,
+    )
+
+
+def classifier_config(**overrides) -> ClassifierConfig:
+    base = dict(enabled=True, model=ModelRef("jev", "jev-latest"))
+    base.update(overrides)
+    return ClassifierConfig(**base)
+
+
+class FakeClassifier:
+    """Like FakeBackend: queued items first, then handler(state). Exceptions are raised."""
+
+    def __init__(self, responses=None, handler=None):
+        self.responses = list(responses or [])
+        self.handler = handler
+        self.calls: list[dict] = []
+
+    def classify(self, model, state):
+        self.calls.append({"model": model, "state": state})
+        item = self.responses.pop(0) if self.responses else self.handler
+        if item is None:
+            raise AssertionError("FakeClassifier has no response queued")
+        if callable(item) and not isinstance(item, ClassifierResult):
+            item = item(state)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def make_llm(conn, config, backend, *, sleeps=None, classifier=None) -> LLMClient:
     sleeps = [] if sleeps is None else sleeps
-    return LLMClient(conn, config, {"anthropic": backend}, now=lambda: FIXED_NOW, sleep=sleeps.append)
+    return LLMClient(
+        conn, config, {"anthropic": backend}, now=lambda: FIXED_NOW, sleep=sleeps.append, classifier=classifier
+    )

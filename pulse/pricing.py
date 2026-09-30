@@ -20,3 +20,10 @@ def cost_usd(
         + output_tokens * price.output
         + cache_read_tokens * price.cache_read
     ) / 1_000_000
+
+
+def request_cost(price: Price | None, reported: float | None) -> float:
+    """Cost of one request to a request-priced model (Jev)."""
+    if reported is not None:
+        return reported
+    return price.per_request if price is not None else 0.0
