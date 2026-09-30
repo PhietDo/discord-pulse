@@ -21,13 +21,14 @@ Multi-server / multi-tenant, authentication, real-time websocket updates, per-us
 
 ### Assumptions
 
-- The user is an admin/mod and can install a read-only bot; file import exists for backfill and for use before the bot is approved.
+- The user is NOT a server admin and cannot add a bot today. File import is the primary ingest path. The read-only bot adapter is built so the user can pitch it to the mod team (section 13); once approved, it becomes the primary path and file import remains for backfill.
+- How export files are produced is outside this tool. The tool never reads Discord with a user account token. Exporters that run on a user token are self-botting under Discord's Terms of Service and risk the account; the README states this plainly.
 - Volume: a few hundred to a few thousand messages per day.
 - Runs locally on one machine (macOS, launchd scheduling).
 
 ## 2. Stack and layout
 
-- Python 3.12, FastAPI, Jinja2 templates + htmx, Chart.js (from cdn.jsdelivr.net), SQLite (stdlib `sqlite3`), `anthropic` SDK, `discord.py` (bot adapter only), pytest.
+- Python 3.12, FastAPI, Jinja2 templates + htmx, Chart.js (from cdn.jsdelivr.net), SQLite (stdlib `sqlite3`), `anthropic` and `openai` SDKs, `discord.py` (bot adapter only), pytest.
 - Project root: `~/discord-pulse`, package `pulse/`.
 - Single config file `pulse.toml`:
 
@@ -41,14 +42,22 @@ team_member_ids = ["111", "222"]    # staff; replies from these count as "answer
 reply_window_hours = 12
 frustration_threshold = -2          # sentiment <= this enters the queue regardless
 
-[models]
-triage = "claude-haiku-4-5-20251001"
-theme = "claude-sonnet-5"
-digest = "claude-opus-5-5"
-investigate = "claude-sonnet-5"
+[models]                            # "provider:model"; provider = anthropic | openai | openrouter
+triage = "anthropic:claude-haiku-4-5-20251001"
+theme = "anthropic:claude-sonnet-5"
+digest = "anthropic:claude-opus-5-5"
+investigate = "openrouter:anthropic/claude-sonnet-5"
 
 [budget]
 daily_usd_cap = 5.00
+
+# USD per million tokens. Required for every model in [models], except
+# openrouter models, where the cost OpenRouter reports per response is used
+# when present and this table is the fallback.
+[pricing."anthropic:claude-haiku-4-5-20251001"]
+input = 1.00
+output = 5.00
+cache_read = 0.10
 
 [[launches]]
 name = "v2.0 SDK"
@@ -56,7 +65,9 @@ date = "2026-09-15"
 keywords = ["v2", "new sdk", "migration"]
 ```
 
-`ANTHROPIC_API_KEY` and `DISCORD_BOT_TOKEN` come from environment variables, never the config file.
+Secrets come from environment variables, never the config file: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY` (only the ones for providers in use are required), and `DISCORD_BOT_TOKEN` (bot adapter only). Config validation fails at startup, naming the missing variable, if a configured provider has no key or a non-OpenRouter model has no pricing entry, so the budget cap can never be silently bypassed.
+
+The pricing values shown are placeholders; the user fills in current prices.
 
 ### Module layout
 
@@ -71,7 +82,11 @@ pulse/
     file_source.py   # DiscordChatExporter JSON + simple CSV
     bot_source.py    # discord.py read-only backfill + stream
   agents/
-    llm.py           # LLM client wrapper: structured output, retries, cost logging, budget gate
+    llm.py           # provider-neutral client: structured output, tool calls, retries, cost logging, budget gate
+    providers/
+      anthropic_backend.py
+      openai_backend.py   # also serves OpenRouter via base_url
+    pricing.py
     triage.py
     theme.py
     digest.py
@@ -137,6 +152,29 @@ Agent-written reports (digest, investigate) cite messages as `[[msg:<message_id>
 
 All agents go through `agents/llm.py`, which provides: JSON-schema-validated structured output, one retry on validation failure, token + cost logging to `agent_runs`, prompt caching for static prompt prefixes, and a budget gate that refuses calls once today's `cost_usd` sum reaches `daily_usd_cap` (recorded as `skipped_budget`). Each agent call is an independent subagent with its own context; no agent sees another agent's conversation, only persisted DB outputs.
 
+### 6.0 Providers
+
+Agents never import a provider SDK. They call `llm.complete(agent_name, system, messages, schema)` or `llm.run_tools(agent_name, system, messages, tools, schema, max_calls)`; `llm.py` resolves the agent's `provider:model` from config and dispatches to a backend implementing one protocol:
+
+```python
+class Backend(Protocol):
+    def complete(self, model, system, messages, schema, cache_prefix) -> BackendResult: ...
+    def tool_step(self, model, system, messages, tools) -> BackendStep: ...
+# BackendResult carries: parsed JSON, input/output/cache-read tokens, reported cost (optional)
+```
+
+| Concern | anthropic | openai | openrouter |
+|---|---|---|---|
+| SDK | `anthropic` | `openai` | `openai` with `base_url=https://openrouter.ai/api/v1` |
+| Structured output | forced single tool whose input schema is the output schema | `response_format` json_schema (strict) | json_schema when the model supports it, else JSON mode + local validation |
+| Tool calling (Investigate) | native tool use | function calling | function calling |
+| Prompt caching | `cache_control` on the static prefix | automatic prefix caching | passes through provider caching |
+| Cost | tokens x pricing table | tokens x pricing table | reported `usage.cost` when present, else pricing table |
+
+Tool and schema definitions are written once in a neutral format and translated per backend. Local JSON-schema validation runs on every backend's output regardless of provider guarantees.
+
+Model names in 6.1-6.4 are the defaults; any agent can be pointed at any provider:model.
+
 ### 6.1 Triage (Haiku 4.5, parallel)
 
 - Input: batches of ~25 untriaged messages. Each message is sent with context: its reply-to parent and up to 3 preceding messages in the same channel/thread.
@@ -199,6 +237,7 @@ Time window selector (7d/30d/90d/custom) on every page.
 - `pipeline` (ingest -> triage -> themes -> modqueue; the default launchd job, every 30 min)
 - `bot` (long-running BotSource streamer)
 - `web` (serves the dashboard on localhost)
+- `seed-demo` (writes a synthetic community dataset, with pre-baked triage, themes, mod queue items and a digest, into a separate `demo.db`; `web --db demo.db` serves it; costs nothing and touches no real data)
 
 Weekly digest is a separate launchd job. Each stage is idempotent and picks up only unprocessed work.
 
@@ -218,8 +257,28 @@ Weekly digest is a separate launchd job. Each stage is idempotent and picks up o
 - Adapter tests against small recorded fixture files (DiscordChatExporter JSON, CSV). BotSource tested at the message-mapping layer with fake discord.py objects.
 - `links.py` and citation rendering covered by unit tests including thread messages and unknown ids.
 - Web routes tested with FastAPI TestClient against a seeded SQLite DB.
-- Eval harness `python -m pulse.eval`: runs triage against `eval/gold.jsonl` (~200 hand-labeled messages) and reports sentiment accuracy, kind macro-F1, needs_reply recall. Run before merging any prompt change. The seed gold set is created by the user; a tiny synthetic set ships for tests.
+- Eval harness `python -m pulse.eval [--model provider:model ...]`: runs triage against `eval/gold.jsonl` (~200 hand-labeled messages) and reports sentiment accuracy, kind macro-F1, needs_reply recall, and cost, one row per model so providers can be compared side by side. Run before merging any prompt change or switching a provider. The seed gold set is created by the user; a tiny synthetic set ships for tests.
+- Each backend has contract tests against recorded provider responses (no network), covering structured output, tool calls, cache token accounting, and OpenRouter reported cost.
 
 ## 12. Build process
 
 Spec -> implementation plan (writing-plans) -> subagent-driven development: each plan task implemented by a fresh subagent, with review between tasks.
+
+Build order favors what the user can use without admin rights: file ingest, agents, dashboard and demo mode first; the bot adapter last.
+
+## 13. Bot setup and mod-team pitch
+
+The repo ships `docs/bot-pitch.md`, a one-page document the user can hand to the mod team, and the `seed-demo` dashboard to show alongside it. It covers:
+
+- What the bot does: reads messages in the listed channels to produce sentiment, pain-point and needs-reply reports for the community team. It never posts, reacts, DMs, or modifies anything.
+- Exact permissions requested: `bot` scope with View Channels and Read Message History only. Message Content Intent enabled (needed to read text). No Administrator, no Send Messages, no Manage permissions.
+- Where data lives: on the user's machine in SQLite; message text is sent to the configured LLM provider for analysis. Mods choose which channels it may read via channel permissions; private channels and private threads are excluded unless they grant access.
+- How to remove it: kick the bot; the user deletes the local DB on request.
+
+Setup steps (performed by whoever owns the application and a server admin):
+
+1. Discord Developer Portal: create an Application, add a Bot, generate the token (stored as `DISCORD_BOT_TOKEN`).
+2. Enable Message Content Intent on the Bot page.
+3. OAuth2 URL Generator: scope `bot`, permissions View Channels + Read Message History.
+4. A member with Manage Server opens the URL and selects the server.
+5. Channel access is then governed by channel permissions; `channel_ids` in `pulse.toml` narrows which readable channels are analyzed. Private threads are out of scope for v1.
