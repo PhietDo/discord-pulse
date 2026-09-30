@@ -283,3 +283,54 @@ Setup steps (performed by whoever owns the application and a server admin):
 3. OAuth2 URL Generator: scope `bot`, permissions View Channels + Read Message History.
 4. A member with Manage Server opens the URL and selects the server.
 5. Channel access is then governed by channel permissions; `channel_ids` in `pulse.toml` narrows which readable channels are analyzed. Private threads are out of scope for v1.
+
+## 14. Addendum (2026-09-30): Jev first-pass classifier
+
+Evidence: docs/benchmarks/2026-09-30-triage-llm-vs-jev.md (Jev matched gpt-5.4-mini on needs_reply at ~1/8 the cost). Implemented in Plan 2.
+
+### 14.1 What Jev does and doesn't do
+
+Jev (TypeSafe `jev-latest`, called through OpenRouter's `/api/v1/systemone`) answers closed-set questions only. It is used for:
+
+- **Triage labels** on every message: `needs_reply` (Noul, a probability), `kind` (Choice over KINDS), `sentiment` (Choice over -2..2), each with confidence.
+- **Mod queue priority**: open items are ordered by `needs_reply_p` descending, then age (replaces "oldest first" in section 8).
+- **Theme assignment** (Plan 2 theme agent): a Choice over existing active themes plus `none`, per message.
+
+The LLM keeps everything generative: topics, new theme names and descriptions, merges, digests, investigations.
+
+### 14.2 Triage flow with the classifier enabled
+
+1. **Stage A (Jev)**: for each untriaged, non-bot message, one request with the same per-message state the LLM triage sends (content, author, is_team, channel, reply_to, context) and three questions. Code then overrides staff messages (`is_team`): sentiment 0, kind `other`, needs_reply false.
+2. **Stage B (LLM)**: messages are escalated to the existing LLM triage (same prompt and schema) when any of: sentiment < 0, `needs_reply_p` >= `needs_reply_threshold`, kind in `escalate_kinds`, or a Jev confidence below `min_confidence`. The LLM result replaces Jev's labels for those messages and supplies topics.
+3. Non-escalated messages keep Jev's labels with `topics = []`.
+4. A Jev failure for a message (after the usual retries) escalates that message to Stage B; it never blocks triage.
+
+With the classifier disabled, triage is exactly the Plan 1 LLM-only path.
+
+### 14.3 Configuration
+
+```toml
+[classifier]
+enabled = true
+model = "jev:jev-latest"              # provider "jev" uses OPENROUTER_API_KEY
+needs_reply_threshold = 0.7
+min_confidence = 0.6
+escalate_kinds = ["bug", "docs", "feature_request", "praise"]
+
+[pricing."jev:jev-latest"]
+per_request = 0.0000387               # measured 2026-09-30; USD per request
+```
+
+`per_request` pricing is a new pricing form for request-priced models; config validation requires it for the `jev` provider when the classifier is enabled.
+
+### 14.4 Data model changes
+
+`triage` gains `needs_reply_p REAL` (nullable; null for LLM-only rows), `kind_confidence REAL`, and `labeler TEXT` (`jev` or `llm`). Jev calls are logged in `agent_runs` with agent `classifier` and count toward the daily budget.
+
+### 14.5 Gate
+
+The Plan 4 eval harness scores Jev against `eval/gold.jsonl` alongside the LLM. If Jev's needs_reply agreement with the gold set is below 90%, the eval output says so and recommends `enabled = false`. The switch is manual; nothing auto-disables in v1.
+
+### 14.6 Testing
+
+A `FakeClassifier` mirrors `FakeBackend`. Tests cover staff overrides, each escalation rule, Jev failure escalation, queue ordering by `needs_reply_p`, and budget accounting for per-request pricing. The Jev backend gets contract tests against recorded `systemone` responses (no network).
