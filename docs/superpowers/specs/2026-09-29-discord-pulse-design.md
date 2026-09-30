@@ -220,10 +220,11 @@ Time window selector (7d/30d/90d/custom) on every page.
 1. **Overview**: sentiment trend line + message volume bars with launch markers; top 5 rising pain points; open mod queue count; latest digest excerpt.
 2. **Pain points**: themes ranked by score, each with a sparkline, kind breakdown, and evidence message cards (section 5); Investigate button.
 3. **Launch**: select a launch; before/after sentiment and volume; themes and message cards matching keywords; "Generate launch digest" button.
-4. **Mod queue**: open items oldest first with reason badge and message card (author + jump link); Mark handled / Dismiss buttons (htmx).
-5. **Messages**: searchable/filterable list of message cards (text, author, channel, theme, kind, sentiment). This is the target of author links.
-6. **Reports**: digests and investigations, rendered markdown with resolved citations.
-7. **Runs**: agent run history, daily cost vs cap, failures with error text.
+4. **Bugs**: every triaged message with kind = bug, grouped by theme, newest first, with message cards (author + jump link), counts per theme over the window, and whether each has a staff reply. Bug reports also enter the mod queue under the normal needs_reply rules, including bug reports posted in general chat channels (user decision 2026-09-30).
+5. **Mod queue**: open items oldest first with reason badge and message card (author + jump link); Mark handled / Dismiss buttons (htmx).
+6. **Messages**: searchable/filterable list of message cards (text, author, channel, theme, kind, sentiment). This is the target of author links.
+7. **Reports**: digests and investigations, rendered markdown with resolved citations.
+8. **Runs**: agent run history, daily cost vs cap, failures with error text.
 
 ## 9. Orchestration
 
