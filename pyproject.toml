@@ -1,0 +1,27 @@
+[project]
+name = "discord-pulse"
+version = "0.1.0"
+description = "DevRel Discord sentiment, pain-point and mod-queue dashboard driven by LLM subagents"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pulse*"]
+
+[tool.setuptools.package-data]
+"pulse.agents" = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
