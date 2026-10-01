@@ -1,6 +1,7 @@
 """Shared test helpers. No network, no real providers."""
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -67,7 +68,7 @@ def set_triage(
         )
 
 
-from pulse.agents.base import BackendResult  # noqa: E402
+from pulse.agents.base import BackendResult, StepResult  # noqa: E402
 from pulse.agents.llm import LLMClient  # noqa: E402
 
 FIXED_NOW = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
@@ -80,10 +81,13 @@ class FakeBackend:
     taking the user prompt and returning either.
     """
 
-    def __init__(self, responses=None, handler=None):
+    def __init__(self, responses=None, handler=None, steps=None, step_handler=None):
         self.responses = list(responses or [])
         self.handler = handler
+        self.steps = list(steps or [])
+        self.step_handler = step_handler
         self.calls: list[dict] = []
+        self.step_calls: list[dict] = []
 
     def complete(self, model, system, user, schema, schema_name):
         self.calls.append({"model": model, "system": system, "user": user, "schema_name": schema_name})
@@ -92,6 +96,20 @@ class FakeBackend:
             raise AssertionError("FakeBackend has no response queued")
         if callable(item) and not isinstance(item, BackendResult):
             item = item(user)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def tool_step(self, model, system, transcript, tools, allow_tools=True):
+        self.step_calls.append({
+            "model": model, "system": system, "transcript": copy.deepcopy(transcript),
+            "tools": [t.name for t in tools], "allow_tools": allow_tools,
+        })
+        item = self.steps.pop(0) if self.steps else self.step_handler
+        if item is None:
+            raise AssertionError("FakeBackend has no tool step queued")
+        if callable(item) and not isinstance(item, StepResult):
+            item = item(transcript, allow_tools)
         if isinstance(item, Exception):
             raise item
         return item

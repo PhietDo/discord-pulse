@@ -11,12 +11,13 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, NoReturn
 
 import jsonschema
 
 from pulse.agents.base import (
-    Backend, BackendResult, BudgetExceeded, LLMError, OutputInvalid, ProviderError, TransientError,
+    Backend, BackendResult, BudgetExceeded, LLMError, OutputInvalid, ProviderError, StepResult, ToolCall, ToolError,
+    ToolSpec, TransientError,
 )
 from pulse.agents.classifier import Classifier, ChoiceResult, ClassifierResult
 from pulse.config import Config, ModelRef, Price
@@ -43,6 +44,16 @@ class ClassifyResponse:
 class ChoiceResponse:
     result: ChoiceResult
     run_id: int
+
+
+@dataclass(frozen=True)
+class ToolRunResponse:
+    text: str
+    run_id: int
+    tool_calls: int
+
+
+TOOL_LIMIT_NOTE = "Tool call limit reached. Write your final answer now from what you have."
 
 
 @dataclass
@@ -214,6 +225,69 @@ class LLMClient:
         """Ask the classifier (Jev) one choice question about one message state."""
         result, run_id = self._classifier_call(lambda c, model: c.choose(model, state, question))
         return ChoiceResponse(result, run_id)
+
+    def run_tools(
+        self,
+        agent: str,
+        system: str,
+        user: str,
+        tools: list[ToolSpec],
+        execute: Callable[[ToolCall], str],
+        *,
+        max_calls: int = 12,
+    ) -> ToolRunResponse:
+        """Run a tool loop until the model answers without tools. One agent_runs row per run."""
+        ref = self._config.models[agent]
+        price = self._config.pricing.get(str(ref))
+        started = self._now()
+        if self.spent_today() >= self._config.daily_usd_cap:
+            self._record(agent, ref, started, "skipped_budget", "daily budget cap reached", _Usage())
+            raise BudgetExceeded(f"daily budget cap ${self._config.daily_usd_cap:.2f} reached")
+
+        backend = self._backends[ref.provider]
+        transcript: list[dict] = [{"role": "user", "content": user}]
+        usage = _Usage()
+        calls = 0
+        while True:
+            allow = calls < max_calls
+            try:
+                step: StepResult = self._with_backoff(
+                    lambda: backend.tool_step(ref.model, system, transcript, tools, allow)
+                )
+            except OutputInvalid as e:
+                usage.add(price, e.input_tokens, e.output_tokens, e.cache_read_tokens, e.reported_cost)
+                self._fail_run(agent, ref, started, usage, f"invalid output: {e}")
+            except (TransientError, ProviderError) as e:
+                self._fail_run(agent, ref, started, usage, f"provider error: {e}")
+            usage.add(price, step.input_tokens, step.output_tokens, step.cache_read_tokens, step.reported_cost)
+
+            if not step.tool_calls or not allow:
+                text = (step.text or "").strip()
+                if not text:
+                    self._fail_run(agent, ref, started, usage, "empty final answer")
+                return ToolRunResponse(text, self._record(agent, ref, started, "ok", None, usage), calls)
+
+            if self.spent_today() + usage.cost_usd >= self._config.daily_usd_cap:
+                self._record(agent, ref, started, "failed", "daily budget cap reached mid-run", usage)
+                raise BudgetExceeded(f"daily budget cap ${self._config.daily_usd_cap:.2f} reached")
+
+            transcript.append({"role": "assistant", "text": step.text, "tool_calls": list(step.tool_calls)})
+            results = []
+            for call in step.tool_calls:
+                calls += 1
+                try:
+                    content = execute(call)
+                except ToolError as e:
+                    content = f"error: {e}"
+                results.append({"id": call.id, "content": content})
+            turn: dict = {"role": "tool", "results": results}
+            if calls >= max_calls:
+                turn["note"] = TOOL_LIMIT_NOTE
+            transcript.append(turn)
+
+    def _fail_run(self, agent: str, ref: ModelRef, started: datetime, usage: _Usage, error: str) -> NoReturn:
+        self._record(agent, ref, started, "failed", error, usage)
+        raise LLMError(f"{agent}: {error}")
 
     def _with_backoff(self, fn: Callable[[], Any]) -> Any:
         for attempt in range(MAX_TRANSIENT_ATTEMPTS):
