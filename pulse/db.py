@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS themes (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS theme_status (
+    theme_id INTEGER PRIMARY KEY REFERENCES themes(id),
+    status TEXT NOT NULL CHECK (status IN ('new', 'acknowledged', 'in_progress', 'shipped')),
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    shipped_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS message_themes (
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     theme_id INTEGER NOT NULL REFERENCES themes(id),
