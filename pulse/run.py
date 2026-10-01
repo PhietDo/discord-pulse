@@ -81,7 +81,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(format_digest(result, conn))
     elif args.command == "investigate":
-        context = {"theme_id": args.theme} if args.theme is not None else None
+        context = None
+        if args.theme is not None:
+            if conn.execute("SELECT 1 FROM themes WHERE id = ?", (args.theme,)).fetchone() is None:
+                print(f"unknown theme {args.theme}", file=sys.stderr)
+                return 1
+            context = {"theme_id": args.theme}
         try:
             result = run_investigation(conn, build_llm(conn, config), args.question, now, context=context)
         except (BudgetExceeded, LLMError, ValueError) as e:

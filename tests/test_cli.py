@@ -104,3 +104,14 @@ def test_digest_unknown_launch_exits_1(tmp_path, monkeypatch, capsys):
     (tmp_path / "pulse.toml").write_text(LAUNCH_CONFIG)
     assert main(["--config", str(tmp_path / "pulse.toml"), "digest", "--launch", "nope"]) == 1
     assert "unknown launch 'nope'" in capsys.readouterr().err
+
+
+def test_investigate_unknown_theme_exits_1_before_any_model_call(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    monkeypatch.setattr("pulse.run.build_llm", lambda *a: pytest.fail("no model client should be built"))
+    assert main(["--config", str(tmp_path / "pulse.toml"), "investigate", "why?", "--theme", "99"]) == 1
+    assert "unknown theme 99" in capsys.readouterr().err
+    conn = connect(tmp_path / "pulse.db")
+    assert conn.execute("SELECT COUNT(*) FROM agent_runs").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM investigations").fetchone()[0] == 0

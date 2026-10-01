@@ -74,6 +74,8 @@ class Toolbox:
         handler = handlers.get(call.name)
         if handler is None:
             raise ToolError(f"unknown tool {call.name!r}")
+        if not isinstance(call.arguments, dict):
+            raise ToolError("arguments must be an object")
         return json.dumps(handler(call.arguments), ensure_ascii=False, default=str)
 
     def _tomorrow(self) -> datetime:
@@ -139,8 +141,8 @@ class Toolbox:
         sql += " WHERE m.is_team = 0 AND m.is_bot = 0 AND m.created_at >= ? AND m.created_at < ?"
         params += [to_iso(start), to_iso(end)]
         if args.get("text"):
-            sql += " AND lower(m.content) LIKE ?"
-            params.append(f"%{str(args['text']).lower()}%")
+            sql += " AND lower(m.content) LIKE ? ESCAPE '\\'"
+            params.append(stats._like(str(args["text"]).lower()))
         if args.get("author_id"):
             sql += " AND m.author_id = ?"
             params.append(str(args["author_id"]))
@@ -169,14 +171,14 @@ class Toolbox:
             raise ToolError(f"no message {mid!r}")
         thread = root["thread_id"] or mid
         rows = self.conn.execute(
-            "SELECT m.id, m.author_name, m.is_team, m.created_at, m.content FROM messages m"
+            "SELECT m.id, m.author_name, m.is_team, m.is_bot, m.created_at, m.content FROM messages m"
             " WHERE m.id = ? OR m.thread_id = ? OR m.reply_to_id = ?"
             " ORDER BY m.created_at, m.id LIMIT ?",
             (mid, thread, mid, THREAD_LIMIT),
         ).fetchall()
         results = [
             {"message_id": r["id"], "author": r["author_name"], "is_team": bool(r["is_team"]),
-             "created_at": r["created_at"], "content": _clip(r["content"])}
+             "is_bot": bool(r["is_bot"]), "created_at": r["created_at"], "content": _clip(r["content"])}
             for r in rows
         ]
         self.seen.update(m["message_id"] for m in results)
@@ -215,7 +217,7 @@ def run_investigation(
     except (BudgetExceeded, LLMError) as e:
         with conn:
             conn.execute(
-                "UPDATE investigations SET markdown = ? WHERE id = ?", (f"_Investigation failed: {e}_", inv_id)
+                "UPDATE investigations SET markdown = ? WHERE id = ?", (f"Investigation failed: {e}", inv_id)
             )
         raise
     except Exception as e:

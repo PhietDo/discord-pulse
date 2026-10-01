@@ -112,7 +112,7 @@ def test_failed_investigation_is_recorded_and_raised():
     with pytest.raises(LLMError):
         run_investigation(conn, make_llm(conn, make_config(), backend), "why?", NOW, context={"theme_id": 1})
     row = conn.execute("SELECT * FROM investigations").fetchone()
-    assert row["markdown"].startswith("_Investigation failed:")
+    assert row["markdown"] == "Investigation failed: investigate: provider error: 401 bad key"
     assert json.loads(row["context"]) == {"theme_id": 1}
 
 
@@ -145,3 +145,25 @@ def test_unexpected_error_marks_investigation_failed_and_reraises():
         run_investigation(conn, make_llm(conn, make_config(), backend), "why?", NOW)
     row = conn.execute("SELECT * FROM investigations").fetchone()
     assert row["markdown"].startswith("Investigation failed: RuntimeError:")
+
+
+def test_get_thread_reports_bots():
+    conn, _ = seed()
+    upsert_messages(conn, [msg("b1", "auto-reply", minutes=8, reply_to_id="q1", is_bot=True)], frozenset())
+    thread = json.loads(Toolbox(conn, NOW).execute(call("get_thread", message_id="q1")))
+    assert {m["message_id"]: m["is_bot"] for m in thread} == {"q1": False, "r1": False, "t1": False, "b1": True}
+
+
+def test_non_object_arguments_are_a_tool_error():
+    conn, _ = seed()
+    with pytest.raises(ToolError, match="arguments must be an object"):
+        Toolbox(conn, NOW).execute(ToolCall("c", "search_messages", ["auth"]))
+
+
+def test_search_text_wildcards_are_literal():
+    conn, _ = seed()
+    upsert_messages(conn, [msg("pc", "50% of builds fail", minutes=11)], frozenset())
+    set_triage(conn, "pc", sentiment=-1, kind="bug")
+    box = Toolbox(conn, NOW)
+    assert [m["message_id"] for m in json.loads(box.execute(call("search_messages", text="%")))] == ["pc"]
+    assert json.loads(box.execute(call("search_messages", text="a_th"))) == []
