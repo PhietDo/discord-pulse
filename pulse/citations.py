@@ -7,6 +7,10 @@ import sqlite3
 from pulse.links import jump_link
 
 CITATION_RE = re.compile(r"\[\[msg:([^\]\s]+)\]\]")
+# Near-misses models write: [[msg:<id>]] and [[msg: id ]].
+_SLOPPY_RE = re.compile(r"\[\[msg:\s*<?\s*([^\]\s<>]+)\s*>?\s*\]\]")
+# Any other [[msg:...]] token left after strict parsing.
+_LENIENT_RE = re.compile(r"\[\[msg:([^\]]*)\]\]")
 
 
 def cited_ids(markdown: str) -> list[str]:
@@ -18,17 +22,30 @@ def cited_ids(markdown: str) -> list[str]:
 
 
 def strip_unknown(markdown: str, allowed: set[str]) -> tuple[str, list[str]]:
-    """Remove citations to messages the agent was not shown."""
+    """Remove citations to messages the agent was not shown, and malformed citation tokens.
+
+    Near-miss forms are normalized to [[msg:<id>]] first. Returns the cleaned markdown and
+    the removed ids (or malformed token contents), deduped in order.
+    """
     removed: list[str] = []
+
+    def drop(value: str) -> str:
+        if value not in removed:
+            removed.append(value)
+        return ""
 
     def replace(match: re.Match) -> str:
         mid = match.group(1)
-        if mid in allowed:
-            return match.group(0)
-        removed.append(mid)
-        return ""
+        return match.group(0) if mid in allowed else drop(mid)
 
-    return CITATION_RE.sub(replace, markdown), removed
+    def sweep(match: re.Match) -> str:
+        if CITATION_RE.fullmatch(match.group(0)):
+            return match.group(0)
+        return drop(match.group(1).strip())
+
+    markdown = _SLOPPY_RE.sub(r"[[msg:\1]]", markdown)
+    markdown = CITATION_RE.sub(replace, markdown)
+    return _LENIENT_RE.sub(sweep, markdown), removed
 
 
 def render_text(markdown: str, conn: sqlite3.Connection) -> str:
