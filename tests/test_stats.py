@@ -205,3 +205,68 @@ def test_top_channels_lists_top_level_channels_busiest_first():
         {"id": "100", "name": "help", "messages": 2},
         {"id": "200", "name": "general", "messages": 1},
     ]
+
+
+def _reply_db():
+    """Questions in #help (100), its thread 300, and #general (200); staff author id is t1."""
+    conn = connect(":memory:")
+    team = frozenset({"t1"})
+    rows = [
+        replace(msg("q1", "how do I log in?", minutes=0, channel_id="100"), channel_name="help"),
+        replace(msg("s1", "use exchange_token", minutes=30, channel_id="100", author_id="t1",
+                    author_name="staff", reply_to_id="q1"), channel_name="help"),
+        replace(msg("q2", "wheel error", minutes=10, channel_id="300", thread_id="300"),
+                channel_name="M1 thread", parent_channel_id="100"),
+        replace(msg("s2", "fixed in 2.0.1", minutes=70, channel_id="300", thread_id="300", author_id="t1",
+                    author_name="staff"), channel_name="M1 thread", parent_channel_id="100"),
+        replace(msg("q3", "docs 404?", minutes=20, channel_id="100"), channel_name="help"),
+        replace(msg("s3", "fixed", minutes=40, channel_id="q3", thread_id="q3", author_id="t1",
+                    author_name="staff"), channel_name="docs 404?", parent_channel_id="100"),
+        replace(msg("q4", "429s again", minutes=60, channel_id="200"), channel_name="general"),
+        replace(msg("q5", "still broken", minutes=20 * 60, channel_id="200"), channel_name="general"),
+        replace(msg("s0", "early staff note", minutes=-5, channel_id="200", author_id="t1",
+                    author_name="staff", reply_to_id="q4"), channel_name="general"),
+        replace(msg("c1", "nice release", minutes=5, channel_id="200"), channel_name="general"),
+    ]
+    upsert_messages(conn, rows, team)
+    for mid in ("q1", "q2", "q3", "q4", "q5"):
+        set_triage(conn, mid, sentiment=-1, needs_reply=True)
+    set_triage(conn, "c1", sentiment=2, needs_reply=False, kind="praise")
+    return conn
+
+
+REPLY_START, REPLY_NOW = T0 - timedelta(days=1), T0 + timedelta(hours=30)
+
+
+def test_reply_stats_median_and_waiting():
+    conn = _reply_db()
+    r = stats.reply_stats(conn, REPLY_START, REPLY_NOW, REPLY_NOW)
+    # q1 30 min (reply), q2 60 min (same thread), q3 20 min (thread started from it);
+    # q4 unanswered for 29 h (the staff note came before it); q5 unanswered for 10 h.
+    assert r == {"needs_reply": 5, "answered": 3, "median_minutes": 30.0, "waiting_over_24h": 1}
+
+
+def test_reply_stats_with_no_questions():
+    conn = connect(":memory:")
+    assert stats.reply_stats(conn, REPLY_START, REPLY_NOW, REPLY_NOW) == {
+        "needs_reply": 0, "answered": 0, "median_minutes": None, "waiting_over_24h": 0,
+    }
+
+
+def test_reply_stats_respect_channel_scope():
+    conn = _reply_db()
+    help_ = stats.reply_stats(conn, REPLY_START, REPLY_NOW, REPLY_NOW, channels=("100",))
+    assert help_ == {"needs_reply": 3, "answered": 3, "median_minutes": 30.0, "waiting_over_24h": 0}
+
+
+def test_channel_breakdown_per_top_level_channel():
+    conn = _reply_db()
+    rows = stats.channel_breakdown(conn, REPLY_START, REPLY_NOW, REPLY_NOW)
+    assert [r["id"] for r in rows] == ["100", "200"]
+    help_, general = rows
+    assert help_ == {
+        "id": "100", "name": "help", "messages": 3, "avg_sentiment": -1.0, "negative_share": 1.0,
+        "needs_reply": 3, "median_reply_minutes": 30.0, "waiting_over_24h": 0,
+    }
+    assert general["messages"] == 3 and general["needs_reply"] == 2 and general["waiting_over_24h"] == 1
+    assert general["median_reply_minutes"] is None

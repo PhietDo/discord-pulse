@@ -5,10 +5,11 @@ Windows are [start, end) in UTC. Only non-team, non-bot, triaged messages count.
 from __future__ import annotations
 
 import sqlite3
+import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from pulse.models import KINDS, to_iso
+from pulse.models import KINDS, from_iso, to_iso
 
 MESSAGE_COLUMNS = (
     "m.id AS message_id, m.author_name AS author, m.channel_name AS channel, m.created_at,"
@@ -250,3 +251,73 @@ def sample_messages(
     sql += f" ORDER BY {order}, m.created_at DESC, m.id LIMIT ?"
     params.append(limit)
     return [to_message(r) for r in conn.execute(sql, params)]
+
+
+REPLY_SLA_HOURS = 24
+
+
+def first_team_reply(
+    conn: sqlite3.Connection, message_id: str, thread_id: str | None, created_at: str
+) -> str | None:
+    """ISO time of the earliest staff message after this one that replies to it, is in its
+    thread, or is in the thread started from it (the mod queue's matching). None if none."""
+    row = conn.execute(
+        "SELECT MIN(r.created_at) AS first FROM messages r WHERE r.is_team = 1 AND r.created_at > ?"
+        " AND (r.reply_to_id = ? OR (? IS NOT NULL AND r.thread_id = ?) OR r.thread_id = ?)",
+        (created_at, message_id, thread_id, thread_id, message_id),
+    ).fetchone()
+    return row["first"]
+
+
+def reply_stats(
+    conn: sqlite3.Connection,
+    start: datetime,
+    end: datetime,
+    now: datetime,
+    *,
+    channels: tuple[str, ...] | None = None,
+) -> dict:
+    """How quickly staff answer community messages that need a reply (spec 15.1)."""
+    scope, scope_params = scope_clause(channels)
+    rows = conn.execute(
+        "SELECT m.id, m.thread_id, m.created_at FROM messages m JOIN triage t ON t.message_id = m.id"
+        f" WHERE {_COMMUNITY} AND t.needs_reply = 1 AND m.created_at >= ? AND m.created_at < ?{scope}",
+        (to_iso(start), to_iso(end), *scope_params),
+    ).fetchall()
+    cutoff = to_iso(now - timedelta(hours=REPLY_SLA_HOURS))
+    waits: list[float] = []
+    waiting = 0
+    for r in rows:
+        first = first_team_reply(conn, r["id"], r["thread_id"], r["created_at"])
+        if first is not None:
+            waits.append((from_iso(first) - from_iso(r["created_at"])).total_seconds() / 60)
+        elif r["created_at"] <= cutoff:
+            waiting += 1
+    return {
+        "needs_reply": len(rows),
+        "answered": len(waits),
+        "median_minutes": round(statistics.median(waits), 1) if waits else None,
+        "waiting_over_24h": waiting,
+    }
+
+
+def channel_breakdown(conn: sqlite3.Connection, start: datetime, end: datetime, now: datetime) -> list[dict]:
+    """Per top-level channel (threads included): volume, mood and reply times for the window."""
+    out = []
+    for ch in top_channels(conn):
+        summary = period_summary(conn, start, end, channels=(ch["id"],))
+        if not summary["messages"]:
+            continue
+        replies = reply_stats(conn, start, end, now, channels=(ch["id"],))
+        out.append({
+            "id": ch["id"],
+            "name": ch["name"],
+            "messages": summary["messages"],
+            "avg_sentiment": summary["avg_sentiment"],
+            "negative_share": round(summary["negative"] / summary["messages"], 3),
+            "needs_reply": replies["needs_reply"],
+            "median_reply_minutes": replies["median_minutes"],
+            "waiting_over_24h": replies["waiting_over_24h"],
+        })
+    out.sort(key=lambda c: (-c["messages"], c["id"]))
+    return out
