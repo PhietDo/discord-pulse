@@ -3,6 +3,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from pulse.agents.base import BackendResult
 from pulse.agents.digest import DigestResult
 from pulse.agents.investigate import InvestigationResult
@@ -182,3 +184,28 @@ def test_format_digest_and_investigation_render_citations():
     assert "removed 1 citation" in text
     inv = InvestigationResult(3, "Because [[msg:m1]].", ["m1"], [], 2)
     assert "investigation #3 (2 tool calls)" in format_investigation(inv, conn)
+
+
+def test_theme_failure_does_not_block_the_mod_queue(tmp_path, monkeypatch):
+    for name in ("dce_channel.json", "dce_thread.json", "messages.csv"):
+        shutil.copy(FIXTURES / name, tmp_path / name)
+    conn = connect(":memory:")
+    config = make_config(imports_dir=tmp_path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("theme bug")
+
+    monkeypatch.setattr("pulse.pipeline.run_themes", boom)
+    with pytest.raises(RuntimeError):
+        run_pipeline(conn, config, make_llm(conn, config, FakeBackend(handler=label)),
+                     source=FileSource(tmp_path), now=datetime(2026, 9, 22, 12, 0, tzinfo=timezone.utc))
+    assert conn.execute("SELECT COUNT(*) FROM mod_queue").fetchone()[0] == 2
+
+
+def test_format_report_lists_mod_queue_before_themes():
+    report = PipelineReport(
+        ingest=UpsertStats(), ingest_errors=[], triage=TriageStats(), modqueue=ModQueueStats(opened=1),
+        themes=ThemeStats(considered=2),
+    )
+    text = format_report(report)
+    assert text.index("mod queue:") < text.index("themes:")

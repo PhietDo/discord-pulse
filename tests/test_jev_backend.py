@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from pulse.agents.base import OutputInvalid, ProviderError, TransientError
-from pulse.agents.classifier import JEV_QUESTIONS, ClassifierResult
+from pulse.agents.classifier import JEV_QUESTIONS, ChoiceResult, ClassifierResult, theme_question
 from pulse.agents.providers.jev_backend import SYSTEMONE_URL, JevBackend
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "jev_response.json").read_text())
@@ -139,8 +139,6 @@ def test_confidence_out_of_range_is_output_invalid():
     with pytest.raises(OutputInvalid):
         backend.classify("jev-latest", STATE)
 
-
-from pulse.agents.classifier import ChoiceResult, theme_question
 
 THEMES = [{"id": 3, "name": "Auth docs", "description": "token step missing"},
           {"id": 7, "name": "M1 install", "description": "arm64 wheels"}]

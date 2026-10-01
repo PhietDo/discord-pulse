@@ -29,7 +29,7 @@ Re-importing is safe: messages are keyed on Discord's message id, and edited mes
 .venv/bin/python -m pulse.run triage              # label new messages
 .venv/bin/python -m pulse.run triage --since 2026-09-01 --force   # re-label a range
 .venv/bin/python -m pulse.run modqueue            # refresh who needs a reply
-.venv/bin/python -m pulse.run pipeline            # all of the above
+.venv/bin/python -m pulse.run pipeline            # all of the above, then themes
 ```
 
 `--since` dates are treated as UTC midnight. `--force` requires `--since` (re-triaging your whole history isn't allowed by accident).
@@ -57,7 +57,15 @@ List the mod queue, highest priority first, with links to each message:
 .venv/bin/python -m pulse.run investigate "why did sentiment dip on Tuesday?"
 ```
 
-`pipeline` now also runs `themes`. Themes are proposed by the `theme` model (with Jev assigning messages to existing themes when the classifier is enabled); a run creates at most 5 new themes and 3 merges, and every change is logged. Digests and investigations cite real messages; the CLI prints each citation as the author and a link to the message, and drops any citation to a message the agent was not shown.
+`pipeline` runs ingest, triage, the mod queue, then `themes` (the queue goes first so a theme failure never blocks it). Themes are proposed by the `theme` model (with Jev assigning messages to existing themes when the classifier is enabled); at most 5 new themes and 3 merges are made per UTC day across all runs, messages proposed for a theme over the limit are retried on a later run, and every change is logged. Digests and investigations cite real messages; the CLI prints each citation as the author and a link to the message, and drops any citation to a message the agent was not shown.
+
+### Costs
+
+All agents share `[budget] daily_usd_cap`.
+
+- `digest` calls the `[models] digest` model once per digest (in the example config, the priciest tier). A period with no community messages is saved without a model call.
+- `investigate` makes up to 13 model steps (12 tool calls plus a final answer), each re-sending a growing transcript. On a mid-tier model, budget roughly 10-25% of a $5 day per question.
+- `themes` runs Jev once per candidate message (when the classifier is enabled and themes exist), plus one `theme` model call per 60 leftover messages.
 
 ## Tests
 

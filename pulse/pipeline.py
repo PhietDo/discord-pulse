@@ -81,8 +81,9 @@ def run_pipeline(
     ingest_stats, errors = ingest(conn, config, source)
     sync_launches(conn, config.launches)
     triage_stats = run_triage(conn, llm)
-    theme_stats = run_themes(conn, llm, now)
+    # The mod queue goes before themes so a theme failure never blocks who-needs-a-reply.
     queue_stats = refresh_mod_queue(conn, config, now)
+    theme_stats = run_themes(conn, llm, now)
     return PipelineReport(ingest_stats, errors, triage_stats, queue_stats, themes=theme_stats)
 
 
@@ -143,10 +144,10 @@ def format_report(report: PipelineReport) -> str:
     lines = [
         format_ingest(report.ingest, report.ingest_errors),
         format_triage(report.triage),
+        format_modqueue(report.modqueue),
     ]
     if report.themes is not None:
         lines.append(format_themes(report.themes))
-    lines.append(format_modqueue(report.modqueue))
     return "\n".join(lines)
 
 

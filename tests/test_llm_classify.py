@@ -1,6 +1,7 @@
 import pytest
 
 from pulse.agents.base import BudgetExceeded, LLMError, OutputInvalid, ProviderError, TransientError
+from pulse.agents.classifier import ChoiceResult
 from pulse.config import Price
 from pulse.db import connect
 from tests.fakes import FakeBackend, FakeClassifier, classifier_config, jev_result, make_config, make_llm
@@ -83,8 +84,6 @@ def test_config_property_exposes_config():
     assert llm.config is config
     assert llm.has_classifier is True
 
-
-from pulse.agents.classifier import ChoiceResult
 
 QUESTION = {"type": "choice", "criteria": {"1": "A", "none": "none"}}
 

@@ -14,7 +14,17 @@ from pulse.config import ConfigError, load_config
 from pulse.db import connect
 from pulse.modqueue import list_open, refresh_mod_queue
 from pulse.pipeline import (
-    build_llm, format_digest, format_ingest, format_investigation, format_modqueue, format_queue, format_report, format_themes, format_triage, ingest, run_pipeline,
+    build_llm,
+    format_digest,
+    format_ingest,
+    format_investigation,
+    format_modqueue,
+    format_queue,
+    format_report,
+    format_themes,
+    format_triage,
+    ingest,
+    run_pipeline,
 )
 from pulse.store import sync_launches
 from pulse.sources.file_source import FileSource
@@ -31,7 +41,7 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("modqueue", help="refresh the mod queue")
     queue = sub.add_parser("queue", help="list open mod queue items, highest priority first")
     queue.add_argument("--limit", type=int, default=20)
-    sub.add_parser("pipeline", help="ingest, triage, then refresh the mod queue")
+    sub.add_parser("pipeline", help="ingest, triage, refresh the mod queue, then update themes")
     sub.add_parser("themes", help="group labelled messages into recurring themes")
     digest = sub.add_parser("digest", help="write the weekly digest, or a launch digest with --launch")
     digest.add_argument("--launch", help="launch name from [[launches]] in pulse.toml")

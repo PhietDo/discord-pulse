@@ -1,7 +1,9 @@
+import json
 from dataclasses import replace
 
+from pulse.config import Launch
 from pulse.db import connect
-from pulse.store import upsert_messages
+from pulse.store import sync_launches, upsert_messages
 from tests.fakes import msg, set_triage
 
 TEAM = frozenset({"t1"})
@@ -52,12 +54,6 @@ def test_stores_optional_fields():
     assert (row["thread_id"], row["reply_to_id"], row["is_bot"], row["author_avatar_url"]) == (
         "300", "m0", 1, "https://x/a.png"
     )
-
-
-import json
-
-from pulse.config import Launch
-from pulse.store import sync_launches
 
 
 def test_sync_launches_upserts_by_name():
