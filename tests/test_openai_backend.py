@@ -196,3 +196,12 @@ def test_tool_step_bad_arguments_are_output_invalid():
     with pytest.raises(OutputInvalid) as exc:
         backend.tool_step("gpt-x", "sys", TRANSCRIPT[:1], TOOLS)
     assert exc.value.output_tokens == 50
+
+
+def test_tool_step_non_function_call_is_output_invalid_with_usage():
+    resp = tool_response(calls=[("c2", "get_thread", "{}")])
+    resp.choices[0].message.tool_calls = [SimpleNamespace(id="c9", type="custom", custom=SimpleNamespace(input="x"))]
+    backend, _ = backend_for(resp)
+    with pytest.raises(OutputInvalid, match="custom") as exc:
+        backend.tool_step("gpt-x", "sys", TRANSCRIPT[:1], TOOLS)
+    assert (exc.value.input_tokens, exc.value.output_tokens, exc.value.cache_read_tokens) == (200, 50, 800)

@@ -20,7 +20,8 @@ def _usage(resp) -> tuple[int, int, int]:
 
 def _anthropic_messages(transcript: list[dict]) -> list[dict]:
     out = []
-    for turn in transcript:
+    last_tool = max((i for i, t in enumerate(transcript) if t["role"] == "tool"), default=None)
+    for i, turn in enumerate(transcript):
         role = turn["role"]
         if role == "user":
             out.append({"role": "user", "content": turn["content"]})
@@ -37,6 +38,9 @@ def _anthropic_messages(transcript: list[dict]) -> list[dict]:
             content = [
                 {"type": "tool_result", "tool_use_id": r["id"], "content": r["content"]} for r in turn["results"]
             ]
+            if i == last_tool and content:
+                # Cache the transcript prefix up to the newest tool output: the next step re-sends it all.
+                content[-1]["cache_control"] = {"type": "ephemeral"}
             if turn.get("note"):
                 content.append({"type": "text", "text": turn["note"]})
             out.append({"role": "user", "content": content})
@@ -90,6 +94,6 @@ class AnthropicBackend:
             kwargs["tool_choice"] = {"type": "auto"} if allow_tools else {"type": "none"}
         resp = self._send(kwargs)
         input_tokens, output_tokens, cache_read = _usage(resp)
-        text = "".join(b.text for b in resp.content if b.type == "text") or None
+        text = "\n".join(b.text for b in resp.content if b.type == "text") or None
         calls = tuple(ToolCall(b.id, b.name, dict(b.input)) for b in resp.content if b.type == "tool_use")
         return StepResult(text, calls, input_tokens, output_tokens, cache_read)

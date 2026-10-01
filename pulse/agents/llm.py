@@ -259,6 +259,10 @@ class LLMClient:
                 self._fail_run(agent, ref, started, usage, f"invalid output: {e}")
             except (TransientError, ProviderError) as e:
                 self._fail_run(agent, ref, started, usage, f"provider error: {e}")
+            except Exception as e:
+                # A bug, not a model failure: record what earlier steps cost, then re-raise.
+                self._record(agent, ref, started, "failed", f"backend raised {type(e).__name__}: {e}", usage)
+                raise
             usage.add(price, step.input_tokens, step.output_tokens, step.cache_read_tokens, step.reported_cost)
 
             if not step.tool_calls or not allow:
@@ -268,8 +272,9 @@ class LLMClient:
                 return ToolRunResponse(text, self._record(agent, ref, started, "ok", None, usage), calls)
 
             if self.spent_today() + usage.cost_usd >= self._config.daily_usd_cap:
-                self._record(agent, ref, started, "failed", "daily budget cap reached mid-run", usage)
-                raise BudgetExceeded(f"daily budget cap ${self._config.daily_usd_cap:.2f} reached")
+                message = f"daily budget cap reached mid-run after ${usage.cost_usd:.2f} on this run"
+                self._record(agent, ref, started, "failed", message, usage)
+                raise BudgetExceeded(message)
 
             transcript.append({"role": "assistant", "text": step.text, "tool_calls": list(step.tool_calls)})
             results = []

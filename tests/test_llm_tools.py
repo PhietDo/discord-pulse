@@ -119,3 +119,22 @@ def test_budget_cap_reached_mid_loop_stops_and_records():
     [row] = runs(conn)
     assert row["status"] == "failed"
     assert row["cost_usd"] == pytest.approx(first_step_cost)
+
+
+def test_unexpected_backend_exception_records_paid_usage_and_reraises():
+    backend = FakeBackend(steps=[step(None, ToolCall("c1", "lookup", {})), AttributeError("custom tool call")])
+    conn, llm, _ = run(backend)
+    with pytest.raises(AttributeError):
+        llm.run_tools("investigate", "sys", "q", TOOLS, lambda c: "x")
+    [row] = runs(conn)
+    assert row["status"] == "failed"
+    assert row["error"] == "backend raised AttributeError: custom tool call"
+    assert row["cost_usd"] == pytest.approx((100 * 1.0 + 20 * 5.0) / 1_000_000)
+
+
+def test_mid_run_budget_message_reports_spend_so_far():
+    backend = FakeBackend(steps=[step(None, ToolCall("c1", "lookup", {}), inp=100_000)])
+    conn, llm, _ = run(backend, daily_usd_cap=0.05)
+    with pytest.raises(BudgetExceeded, match=r"mid-run after \$0\.10 on this run"):
+        llm.run_tools("investigate", "sys", "q", TOOLS, lambda c: "x")
+    assert runs(conn)[0]["error"] == "daily budget cap reached mid-run after $0.10 on this run"

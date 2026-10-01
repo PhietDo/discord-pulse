@@ -120,7 +120,8 @@ def test_tool_step_translates_transcript_and_parses_tool_use():
             {"type": "tool_use", "id": "tu1", "name": "search_messages", "input": {"text": "auth"}},
         ]},
         {"role": "user", "content": [
-            {"type": "tool_result", "tool_use_id": "tu1", "content": "[3 messages]"},
+            {"type": "tool_result", "tool_use_id": "tu1", "content": "[3 messages]",
+             "cache_control": {"type": "ephemeral"}},
             {"type": "text", "text": "answer now"},
         ]},
     ]
@@ -137,3 +138,30 @@ def test_tool_step_maps_errors_like_complete():
     err = anthropic.RateLimitError("slow", response=httpx.Response(429, request=REQ), body=None)
     with pytest.raises(TransientError):
         backend_for(err)[0].tool_step("m", "sys", TRANSCRIPT[:1], TOOLS)
+
+
+def test_tool_step_caches_only_the_last_result_of_the_latest_tool_turn():
+    transcript = [
+        *TRANSCRIPT,
+        {"role": "assistant", "text": None, "tool_calls": [
+            ToolCall("tu2", "search_messages", {"text": "a"}), ToolCall("tu3", "search_messages", {"text": "b"}),
+        ]},
+        {"role": "tool", "results": [{"id": "tu2", "content": "A"}, {"id": "tu3", "content": "B"}]},
+    ]
+    backend, messages = backend_for(response([SimpleNamespace(type="text", text="ok")]))
+    backend.tool_step("m", "sys", transcript, TOOLS)
+    sent = messages.kwargs["messages"]
+    assert "cache_control" not in sent[2]["content"][0]
+    assert sent[4]["content"] == [
+        {"type": "tool_result", "tool_use_id": "tu2", "content": "A"},
+        {"type": "tool_result", "tool_use_id": "tu3", "content": "B", "cache_control": {"type": "ephemeral"}},
+    ]
+    assert messages.kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in transcript[-1]["results"][-1]
+
+
+def test_tool_step_joins_text_blocks_with_newlines():
+    backend, _ = backend_for(response([
+        SimpleNamespace(type="text", text="First."), SimpleNamespace(type="text", text="Second."),
+    ]))
+    assert backend.tool_step("m", "sys", TRANSCRIPT[:1], TOOLS).text == "First.\nSecond."

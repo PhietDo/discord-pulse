@@ -157,6 +157,10 @@ class OpenAIBackend:
         message = resp.choices[0].message
         calls = []
         for tc in getattr(message, "tool_calls", None) or []:
+            if getattr(tc, "type", "function") != "function":
+                raise OutputInvalid(
+                    f"unsupported tool call type {tc.type!r}", input_tokens, output_tokens, cached, reported
+                )
             try:
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError as e:
