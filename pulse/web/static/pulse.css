@@ -157,6 +157,7 @@ table.chan{min-width:540px}
 table.chan th,table.chan td{padding-inline:8px}
 table.chan th{white-space:nowrap}
 table.chan td{padding:9px 10px}
+table.chan a{color:var(--ink);text-decoration:none;font-family:var(--mono)}
 .share{display:flex;align-items:center;gap:8px;font:500 12px var(--mono);font-variant-numeric:tabular-nums}
 .share .track{flex:1;max-width:64px;min-width:40px;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
 .share .fill{height:100%;background:var(--neg)}
