@@ -56,12 +56,14 @@ def make_config(**overrides) -> Config:
     return Config(**base)
 
 
-def set_triage(conn, message_id: str, *, sentiment: int = 0, needs_reply: bool = False, kind: str = "question") -> None:
+def set_triage(
+    conn, message_id: str, *, sentiment: int = 0, needs_reply: bool = False, kind: str = "question", topics=()
+) -> None:
     with conn:
         conn.execute(
             "INSERT OR REPLACE INTO triage (message_id, sentiment, confidence, kind, topics,"
             " needs_reply, prompt_version, created_at) VALUES (?, ?, 0.9, ?, ?, ?, 'test', ?)",
-            (message_id, sentiment, kind, json.dumps([]), int(needs_reply), to_iso(T0)),
+            (message_id, sentiment, kind, json.dumps(list(topics)), int(needs_reply), to_iso(T0)),
         )
 
 
