@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_macros.html" import message_card, range_selector %}
+{% block title %}Messages{% endblock %}
+{% block main %}
+<div class="head">
+  <div>
+    <h1>{% if author %}Messages from {{ author }}{% elif theme_name %}{{ theme_name }}{% else %}Messages{% endif %}</h1>
+    <p class="sub">{{ total }} {{ 'message' if total == 1 else 'messages' }} · last {{ f.days }} days · newest first</p>
+  </div>
+  {{ range_selector(f, "/messages", keep) }}
+</div>
+<form class="form-row" method="get" action="/messages">
+  <input type="hidden" name="days" value="{{ f.days }}">
+  {% if f.channel %}<input type="hidden" name="channel" value="{{ f.channel }}">{% endif %}
+  {% if keep.author_id %}<input type="hidden" name="author_id" value="{{ keep.author_id }}">{% endif %}
+  {% if keep.theme %}<input type="hidden" name="theme" value="{{ keep.theme }}">{% endif %}
+  <input id="msg-q" type="search" name="q" value="{{ keep.q }}" placeholder="Search message text" aria-label="Search message text">
+  <select id="msg-kind" name="kind" aria-label="Kind">
+    <option value="">Any kind</option>
+    {% for k in kinds %}<option value="{{ k }}"{% if keep.kind == k %} selected{% endif %}>{{ k|kind_label }}</option>{% endfor %}
+  </select>
+  <select id="msg-mood" name="mood" aria-label="Sentiment">
+    <option value="">Any sentiment</option>
+    <option value="neg"{% if keep.mood == 'neg' %} selected{% endif %}>Negative</option>
+    <option value="neutral"{% if keep.mood == 'neutral' %} selected{% endif %}>Neutral</option>
+    <option value="pos"{% if keep.mood == 'pos' %} selected{% endif %}>Positive</option>
+  </select>
+  <button class="btn" type="submit">Search</button>
+  {% if keep.q or keep.kind or keep.mood or keep.author_id or keep.theme %}<a class="btn" href="/messages{{ f.qs() }}">Clear</a>{% endif %}
+</form>
+<div class="msgs">
+  {% for m in cards %}{{ message_card(m, now, f) }}{% else %}<p class="empty">No messages match these filters.</p>{% endfor %}
+</div>
+<div class="pager">
+  {% if page > 1 %}<a class="btn" href="/messages{{ f.qs(page=page - 1, **keep) }}">Previous</a>{% endif %}
+  {% if page * per_page < total %}<a class="btn" href="/messages{{ f.qs(page=page + 1, **keep) }}">Next</a>{% endif %}
+</div>
+{% endblock %}

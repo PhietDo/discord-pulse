@@ -5,12 +5,60 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from pulse import stats
-from pulse.models import to_iso
+from pulse.models import KINDS, to_iso
 from pulse.modqueue import list_open
 from pulse.theme_status import LABELS, statuses
 from pulse.web.cards import cards_by_ids
 from pulse.web.charts import sparkline
 from pulse.web.filters import Filters
+
+PER_PAGE = 50
+MOODS = {"neg": "t.sentiment < 0", "neutral": "t.sentiment = 0", "pos": "t.sentiment > 0"}
+
+
+def search_cards(
+    conn,
+    f: Filters,
+    *,
+    text: str | None = None,
+    author_id: str | None = None,
+    theme_id: int | None = None,
+    kind: str | None = None,
+    mood: str | None = None,
+    page: int = 1,
+) -> tuple[list[dict], int]:
+    where = ["m.created_at >= ?", "m.created_at < ?"]
+    params: list = [to_iso(f.start), to_iso(f.end)]
+    if text:
+        where.append("m.content LIKE ? ESCAPE '\\'")
+        params.append(stats._like(text))
+    if author_id:
+        where.append("m.author_id = ?")
+        params.append(author_id)
+    if kind in KINDS:
+        where.append("t.kind = ?")
+        params.append(kind)
+    if mood in MOODS:
+        where.append(MOODS[mood])
+    if theme_id is not None:
+        ids = stats.theme_member_ids(conn, theme_id)
+        if not ids:
+            return [], 0
+        where.append(f"m.id IN (SELECT message_id FROM message_themes WHERE theme_id IN ({','.join('?' * len(ids))}))")
+        params += ids
+    scope, scope_params = stats.scope_clause(f.channels)
+    clause = " AND ".join(where) + scope
+    params += scope_params
+    base = f"FROM messages m LEFT JOIN triage t ON t.message_id = m.id WHERE {clause}"
+    total = conn.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
+    ids = [
+        r[0] for r in conn.execute(
+            f"SELECT m.id {base} ORDER BY m.created_at DESC, m.id LIMIT ? OFFSET ?",
+            (*params, PER_PAGE, (max(page, 1) - 1) * PER_PAGE),
+        )
+    ]
+    return cards_by_ids(conn, ids), total
+
 
 KIND_COLORS = {
     "bug": "var(--neg)", "docs": "var(--warn)", "feature_request": "var(--team)",
