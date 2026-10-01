@@ -270,3 +270,17 @@ def test_channel_breakdown_per_top_level_channel():
     }
     assert general["messages"] == 3 and general["needs_reply"] == 2 and general["waiting_over_24h"] == 1
     assert general["median_reply_minutes"] is None
+
+
+def test_reply_after_now_is_not_answered():
+    conn = connect(":memory:")
+    team = frozenset({"t1"})
+    rows = [
+        replace(msg("q", "help", minutes=0, channel_id="100"), channel_name="help"),
+        replace(msg("s", "answer", minutes=3 * 24 * 60, channel_id="100", author_id="t1",
+                    author_name="staff", reply_to_id="q"), channel_name="help"),
+    ]
+    upsert_messages(conn, rows, team)
+    set_triage(conn, "q", sentiment=-1, needs_reply=True)
+    r = stats.reply_stats(conn, REPLY_START, T0 + timedelta(days=2), T0 + timedelta(days=2))
+    assert r == {"needs_reply": 1, "answered": 0, "median_minutes": None, "waiting_over_24h": 1}

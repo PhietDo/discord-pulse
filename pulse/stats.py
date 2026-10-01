@@ -257,15 +257,19 @@ REPLY_SLA_HOURS = 24
 
 
 def first_team_reply(
-    conn: sqlite3.Connection, message_id: str, thread_id: str | None, created_at: str
+    conn: sqlite3.Connection, message_id: str, thread_id: str | None, created_at: str, *, before: str | None = None
 ) -> str | None:
     """ISO time of the earliest staff message after this one that replies to it, is in its
     thread, or is in the thread started from it (the mod queue's matching). None if none."""
-    row = conn.execute(
+    sql = (
         "SELECT MIN(r.created_at) AS first FROM messages r WHERE r.is_team = 1 AND r.created_at > ?"
-        " AND (r.reply_to_id = ? OR (? IS NOT NULL AND r.thread_id = ?) OR r.thread_id = ?)",
-        (created_at, message_id, thread_id, thread_id, message_id),
-    ).fetchone()
+        " AND (r.reply_to_id = ? OR (? IS NOT NULL AND r.thread_id = ?) OR r.thread_id = ?)"
+    )
+    params = [created_at, message_id, thread_id, thread_id, message_id]
+    if before is not None:
+        sql += " AND r.created_at <= ?"
+        params.append(before)
+    row = conn.execute(sql, params).fetchone()
     return row["first"]
 
 
@@ -287,8 +291,9 @@ def reply_stats(
     cutoff = to_iso(now - timedelta(hours=REPLY_SLA_HOURS))
     waits: list[float] = []
     waiting = 0
+    now_iso = to_iso(now)
     for r in rows:
-        first = first_team_reply(conn, r["id"], r["thread_id"], r["created_at"])
+        first = first_team_reply(conn, r["id"], r["thread_id"], r["created_at"], before=now_iso)
         if first is not None:
             waits.append((from_iso(first) - from_iso(r["created_at"])).total_seconds() / 60)
         elif r["created_at"] <= cutoff:

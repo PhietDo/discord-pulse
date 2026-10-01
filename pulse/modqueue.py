@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from pulse.config import Config
 from pulse.models import to_iso
+from pulse.stats import first_team_reply
 
 # Keeps the first import of months of history from flooding the queue.
 QUEUE_LOOKBACK_DAYS = 7
@@ -23,12 +24,7 @@ def _team_replied(conn: sqlite3.Connection, message_id: str, thread_id: str | No
     # A message with no thread_id can still be the message a Discord thread was
     # started from (thread id == starter message id), so also match replies
     # whose thread_id is this message's own id.
-    row = conn.execute(
-        "SELECT 1 FROM messages r WHERE r.is_team = 1 AND r.created_at > ?"
-        " AND (r.reply_to_id = ? OR (? IS NOT NULL AND r.thread_id = ?) OR r.thread_id = ?) LIMIT 1",
-        (created_at, message_id, thread_id, thread_id, message_id),
-    ).fetchone()
-    return row is not None
+    return first_team_reply(conn, message_id, thread_id, created_at) is not None
 
 
 def list_open(conn: sqlite3.Connection, limit: int = 20) -> list[sqlite3.Row]:
