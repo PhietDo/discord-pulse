@@ -197,3 +197,5 @@ textarea{width:100%;min-height:64px;resize:vertical}
 .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px}
 .compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .spin{color:var(--muted)}
+.excerpt{max-height:240px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
+a.pname{display:block}

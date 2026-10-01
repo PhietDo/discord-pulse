@@ -1,9 +1,97 @@
 {% extends "base.html" %}
-{% from "_macros.html" import range_selector %}
+{% from "_macros.html" import message_card, range_selector, status_pill %}
 {% block title %}Overview{% endblock %}
 {% block main %}
 <div class="head">
-  <div><h1>Community pulse</h1><p class="sub">Last {{ f.days }} days</p></div>
+  <div><h1>Community pulse</h1><p class="sub">Last {{ f.days }} days · as of {{ now.strftime('%b') }} {{ now.day }}, {{ now.strftime('%H:%M') }} UTC</p></div>
   {{ range_selector(f, "/") }}
 </div>
+
+<div class="strip">
+  <div class="stat"><span class="label">Messages, 7 days</span><span class="big">{{ week.messages }}</span>
+    <span class="delta {{ 'warnc' if vol_delta and vol_delta > 0 else 'mut' }}">{% if vol_delta is none %}nothing the week before{% else %}{{ '%+d'|format(vol_delta) }}% vs prev 7d{% endif %}</span></div>
+  <div class="stat"><span class="label">Avg sentiment</span><span class="big {{ 'neg' if (week.avg_sentiment or 0) < 0 else 'pos' if (week.avg_sentiment or 0) > 0 else '' }}">{{ week.avg_sentiment|signed }}</span>
+    <span class="delta mut">{{ prev.avg_sentiment|signed }} the week before</span></div>
+  <div class="stat"><span class="label">Needs a reply</span><span class="big {{ 'neg' if queue_total else '' }}">{{ queue_total }}</span>
+    <span class="delta mut">{% if queue_total %}{{ frustrated }} frustrated · oldest {{ oldest|age(now) }}{% else %}queue is clear{% endif %}</span></div>
+  <div class="stat"><span class="label">First staff reply</span><span class="big">{{ replies.median_minutes|minutes }}</span>
+    <span class="delta {{ 'neg' if replies.waiting_over_24h else 'mut' }}">{{ replies.answered }} of {{ replies.needs_reply }} answered · {{ replies.waiting_over_24h }} waiting &gt;24h</span></div>
+  <div class="stat"><span class="label">Spend today</span><span class="big">${{ "%.2f"|format(spent) }}</span>
+    <span class="delta mut">of ${{ "%.2f"|format(cap) }} daily cap</span></div>
+</div>
+
+<div class="grid2">
+  <div class="stack">
+    <section class="panel" aria-labelledby="h-chart">
+      <div class="panel-head"><h2 id="h-chart">Sentiment and volume</h2><span class="note">daily average, −2 to +2 scale</span></div>
+      <div class="chart-wrap">{{ chart }}</div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>avg sentiment</span><span><i style="background:var(--line);height:8px"></i>messages per day</span><span><i style="background:var(--warn)"></i>launch</span></div>
+    </section>
+    <section class="panel" aria-labelledby="h-where">
+      <div class="panel-head"><h2 id="h-where">Where it's coming from</h2><span class="note">last {{ f.days }} days · community messages</span></div>
+      {% if mix %}
+      <div class="mix" role="img" aria-label="Message mix by type">{% for k in mix %}<span style="flex:{{ k.count }};background:{{ k.color }}" title="{{ k.kind|kind_label }}: {{ k.count }}"></span>{% endfor %}</div>
+      <div class="mix-legend">{% for k in mix %}<span><i style="background:{{ k.color }}"></i>{{ k.kind|kind_label }}<b>{{ k.pct }}%</b></span>{% endfor %}</div>
+      <div class="tbl-wrap" style="margin-top:14px"><table class="chan">
+        <thead><tr><th>Channel</th><th class="num">Msgs</th><th class="num">Avg</th><th>Negative</th><th class="num">Need reply</th><th class="num">Median reply</th><th class="num">Wait &gt;24h</th></tr></thead>
+        <tbody>
+        {% for c in breakdown %}
+          {% set share = (c.negative_share * 100)|round|int %}
+          <tr>
+            <td class="where"><a href="/{{ f.qs(channel=c.id) }}">#{{ c.name }}</a></td>
+            <td class="num">{{ c.messages }}</td>
+            <td class="num {{ 'neg' if (c.avg_sentiment or 0) < -0.2 else 'pos' if (c.avg_sentiment or 0) > 0.2 else 'mut' }}">{{ c.avg_sentiment|signed }}</td>
+            <td><div class="share"><div class="track"><div class="fill" style="width:{{ share }}%"></div></div>{{ share }}%</div></td>
+            <td class="num">{{ c.needs_reply }}</td>
+            <td class="num">{{ c.median_reply_minutes|minutes }}</td>
+            <td class="num {{ 'neg' if c.waiting_over_24h else 'mut' }}">{{ c.waiting_over_24h }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}<p class="empty">No community messages in this window yet.</p>{% endif %}
+    </section>
+  </div>
+  <section class="panel" aria-labelledby="h-rising">
+    <div class="panel-head"><h2 id="h-rising">Rising pain points</h2><a class="btn" href="/pain{{ f.qs() }}">All pain points</a></div>
+    <div class="pain">
+      {% for p in rising %}
+      <div class="pain-row">
+        <span class="rank">{{ '%02d'|format(loop.index) }}</span>
+        <div>
+          <a class="pname row-btn" href="/pain{{ f.qs(theme=p.id) }}">{{ p.name }}</a>
+          <div class="pmeta">{{ p.volume }} msgs · {{ p.trend_text }}</div>
+          {% if p.status != 'new' %}<div style="margin-top:4px">{{ status_pill(p.status, p.status_label) }}</div>{% endif %}
+        </div>
+        {{ p.spark }}
+        <span class="score">{{ p.score|round|int }}</span>
+      </div>
+      {% else %}
+      <p class="empty">No pain points for this filter yet. They appear after the theme stage runs.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="grid2">
+  <section class="panel" aria-labelledby="h-attn">
+    <div class="panel-head"><h2 id="h-attn">Needs attention</h2><a class="btn" href="/queue{{ f.qs() }}">Open mod queue</a></div>
+    <div class="msgs">
+      {% for m in attention %}{{ message_card(m, now, f, reason=m.reason) }}{% else %}<p class="empty">Nothing is waiting for a reply.</p>{% endfor %}
+    </div>
+  </section>
+  <section class="panel" aria-labelledby="h-well">
+    <div class="panel-head"><h2 id="h-well">Landing well</h2><span class="note">most positive in this window</span></div>
+    <div class="msgs">
+      {% for m in praise %}{{ message_card(m, now, f) }}{% else %}<p class="empty">No praise in this window yet.</p>{% endfor %}
+    </div>
+  </section>
+</div>
+
+{% if digest %}
+<section class="panel" aria-labelledby="h-digest">
+  <div class="panel-head"><h2 id="h-digest">Latest {{ digest.kind }} digest</h2><a class="btn" href="/reports/digest/{{ digest.id }}{{ f.qs() }}">Read it all</a></div>
+  <div class="report excerpt">{{ digest_html }}</div>
+</section>
+{% endif %}
 {% endblock %}

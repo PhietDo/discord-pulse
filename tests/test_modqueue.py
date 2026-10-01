@@ -148,3 +148,22 @@ def test_list_open_excludes_closed_items():
     with conn:
         conn.execute("UPDATE mod_queue SET status = 'dismissed'")
     assert list_open(conn) == []
+
+
+def test_list_open_filters_by_channel_and_exposes_queue_id():
+    from dataclasses import replace as _replace
+
+    conn = connect(":memory:")
+    rows = [
+        _replace(msg("a", "broken", minutes=0, channel_id="100"), channel_name="help"),
+        _replace(msg("b", "broken too", minutes=1, channel_id="300", thread_id="300"),
+                 channel_name="thread", parent_channel_id="100"),
+        _replace(msg("c", "also broken", minutes=2, channel_id="200"), channel_name="general"),
+    ]
+    upsert_messages(conn, rows, frozenset())
+    for m in rows:
+        set_triage(conn, m.id, sentiment=-2, needs_reply=False, kind="bug")
+    refresh_mod_queue(conn, make_config(), T0 + timedelta(hours=1))
+    assert {r["message_id"] for r in list_open(conn, channels=("100",))} == {"a", "b"}
+    assert [r["message_id"] for r in list_open(conn, channels=("200",))] == ["c"]
+    assert all(isinstance(r["queue_id"], int) for r in list_open(conn))

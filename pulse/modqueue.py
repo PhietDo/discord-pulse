@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from pulse.config import Config
 from pulse.models import to_iso
-from pulse.stats import first_team_reply
+from pulse.stats import first_team_reply, scope_clause
 
 # Keeps the first import of months of history from flooding the queue.
 QUEUE_LOOKBACK_DAYS = 7
@@ -27,19 +27,22 @@ def _team_replied(conn: sqlite3.Connection, message_id: str, thread_id: str | No
     return first_team_reply(conn, message_id, thread_id, created_at) is not None
 
 
-def list_open(conn: sqlite3.Connection, limit: int = 20) -> list[sqlite3.Row]:
+def list_open(
+    conn: sqlite3.Connection, limit: int = 20, *, channels: tuple[str, ...] | None = None
+) -> list[sqlite3.Row]:
     """Open items, highest priority first: frustrated, then Jev's needs_reply
     probability (an LLM-only row counts as its 0/1 label), then oldest."""
+    scope, params = scope_clause(channels)
     return conn.execute(
-        "SELECT q.reason, m.id AS message_id, m.guild_id, m.channel_id, m.channel_name, m.author_name,"
-        " m.content, m.created_at, t.needs_reply_p"
+        "SELECT q.id AS queue_id, q.reason, m.id AS message_id, m.guild_id, m.channel_id, m.channel_name,"
+        " m.thread_id, m.author_name, m.content, m.created_at, t.needs_reply_p"
         " FROM mod_queue q JOIN messages m ON m.id = q.message_id"
         " LEFT JOIN triage t ON t.message_id = m.id"
-        " WHERE q.status = 'open'"
+        f" WHERE q.status = 'open'{scope}"
         " ORDER BY (q.reason = 'frustrated') DESC, COALESCE(t.needs_reply_p, t.needs_reply, 0) DESC,"
         " m.created_at ASC, m.id ASC"
         " LIMIT ?",
-        (limit,),
+        (*params, limit),
     ).fetchall()
 
 
