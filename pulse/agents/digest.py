@@ -165,7 +165,8 @@ def _save(conn, kind, period, launch_id, markdown, removed, run_id, now) -> Dige
     with conn:
         digest_id = int(conn.execute(
             "INSERT INTO digests (kind, period_start, period_end, launch_id, markdown, cited_message_ids,"
-            " run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (kind, period[0], period[1], launch_id, markdown, json.dumps(cited), run_id, to_iso(now)),
+            " removed_citations, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (kind, period[0], period[1], launch_id, markdown, json.dumps(cited), json.dumps(removed),
+             run_id, to_iso(now)),
         ).lastrowid)
     return DigestResult(digest_id, kind, period[0], period[1], markdown, cited, removed)

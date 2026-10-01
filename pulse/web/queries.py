@@ -194,3 +194,40 @@ def latest_digest(conn) -> sqlite3.Row | None:
 
 def pct_change(current: int, previous: int) -> int | None:
     return None if previous == 0 else round(100 * (current - previous) / previous)
+
+
+JOB_TIMEOUT_MINUTES = 10
+
+
+def report_rows(conn) -> list[dict]:
+    rows = []
+    for r in conn.execute(
+        "SELECT d.id, d.kind, d.created_at, l.name AS launch FROM digests d LEFT JOIN launches l ON l.id = d.launch_id"
+    ):
+        title = f"Launch digest: {r['launch']}" if r["kind"] == "launch" else "Weekly digest"
+        rows.append({"type": "digest", "id": r["id"], "title": title, "created_at": r["created_at"],
+                     "state": "done", "href": f"/reports/digest/{r['id']}"})
+    for r in conn.execute("SELECT id, question, markdown, created_at FROM investigations"):
+        md = r["markdown"]
+        state = "running" if md is None else "failed" if md.startswith("Investigation failed") else "done"
+        rows.append({"type": "investigation", "id": r["id"], "title": r["question"], "created_at": r["created_at"],
+                     "state": state, "href": f"/reports/investigation/{r['id']}"})
+    rows.sort(key=lambda x: (x["created_at"], x["type"], x["id"]), reverse=True)
+    return rows
+
+
+def digest_job_state(conn, since: datetime, now: datetime) -> tuple[str, str | None]:
+    since_iso = to_iso(since)
+    if conn.execute("SELECT 1 FROM digests WHERE created_at >= ? LIMIT 1", (since_iso,)).fetchone():
+        return "done", None
+    failed = conn.execute(
+        "SELECT error, status FROM agent_runs WHERE agent = 'digest' AND status != 'ok' AND started_at >= ?"
+        " ORDER BY id DESC LIMIT 1",
+        (since_iso,),
+    ).fetchone()
+    if failed:
+        reason = "the daily budget cap was reached" if failed["status"] == "skipped_budget" else (failed["error"] or "the digest agent failed")
+        return "failed", reason
+    if now - since > timedelta(minutes=JOB_TIMEOUT_MINUTES):
+        return "failed", f"no digest after {JOB_TIMEOUT_MINUTES} minutes"
+    return "running", None

@@ -170,3 +170,10 @@ def test_failed_digest_saves_no_row(cap, outcome, error):
     with pytest.raises(error):
         run_digest(conn, make_llm(conn, make_config(daily_usd_cap=cap), backend), NOW)
     assert conn.execute("SELECT COUNT(*) FROM digests").fetchone()[0] == 0
+
+
+def test_digest_stores_removed_citations():
+    conn = seed()
+    result = run_digest(conn, make_llm(conn, make_config(), FakeBackend(handler=cite_first_and_bogus)), NOW)
+    row = conn.execute("SELECT removed_citations FROM digests WHERE id = ?", (result.digest_id,)).fetchone()
+    assert json.loads(row["removed_citations"]) == ["bogus"]

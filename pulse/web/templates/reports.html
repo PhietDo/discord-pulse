@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Reports</h1><p class="sub">Digests and investigations. Citations link to the messages they used.</p></div>
+  <form method="post" action="/reports/digest{{ f.qs() }}">
+    {% if agents_on %}<button class="btn primary" type="submit">Write weekly digest</button>
+    {% else %}<button class="btn" type="button" disabled title="{{ agents_off_text }}">Write weekly digest</button> <span class="pmeta">{{ agents_off_text }}</span>{% endif %}
+  </form>
+</div>
+{% if job %}
+  {% if job.state == 'running' %}
+  <div id="report-list" hx-get="/reports{{ f.qs(pending=job.pending) }}" hx-trigger="every 5s" hx-select="#report-list" hx-swap="outerHTML">
+    <p class="banner" role="status">Writing the digest. This page updates by itself.</p>
+  {% elif job.state == 'done' %}
+  <div id="report-list"><p class="banner" role="status">Digest ready.</p>
+  {% else %}
+  <div id="report-list"><p class="banner err" role="status">The digest failed: {{ job.reason }}.</p>
+  {% endif %}
+{% else %}
+  <div id="report-list">
+{% endif %}
+  <section class="panel" style="margin-top:12px">
+    {% for r in rows %}
+    <div class="pain-row" style="grid-template-columns:minmax(0,1fr) auto">
+      <div><a class="pname row-btn" href="{{ r.href }}{{ f.qs() }}">{{ r.title }}</a>
+        <div class="pmeta">{{ 'Digest' if r.type == 'digest' else 'Investigation' }} · {{ r.created_at|utc }}</div></div>
+      <span class="pill {{ 'ok' if r.state == 'done' else 'unanswered' if r.state == 'running' else 'frustrated' }}">{{ r.state }}</span>
+    </div>
+    {% else %}
+    <p class="empty">No reports yet. Write a weekly digest, or ask Investigate a question from a pain point.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import message_card %}
+{% block title %}Launch{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>{% if sel %}Launch: {{ sel.name }}{% else %}Launch{% endif %}</h1>
+    <p class="sub">{% if sel %}{{ sel.date }} · equal windows before and after, up to 14 days · all channels{% else %}Compare the community before and after a release{% endif %}</p></div>
+  {% if launches|length > 1 %}
+  <div class="chips" role="group" aria-label="Launches">
+    {% for l in launches %}<a class="chip" href="/launch{{ f.qs(name=l.name) }}"{% if sel and l.id == sel.id %} aria-current="true"{% endif %}>{{ l.name }}</a>{% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% if not sel %}
+<p class="empty">No launches yet. Add one under <code>[[launches]]</code> in pulse.toml with a name, date and keywords.</p>
+{% elif not data %}
+<p class="empty">{{ sel.name }} hasn't happened yet ({{ sel.date }}). Come back after launch day.</p>
+{% else %}
+<div class="compare">
+  {% for label, side in (("Before", data.before), ("After", data.after)) %}
+  <section class="panel">
+    <span class="label">{{ label }} · {{ side.days }} days</span>
+    <p class="big" style="margin:6px 0">{{ side.messages }} messages</p>
+    <p class="pmeta">avg sentiment {{ side.avg_sentiment|signed }} · {{ side.negative }} negative · {{ side.needs_reply }} needed a reply</p>
+  </section>
+  {% endfor %}
+</div>
+<section class="panel">
+  <div class="panel-head"><h2>Sentiment around the launch</h2>
+    <form method="post" action="/launch/{{ sel.id }}/digest{{ f.qs() }}">
+      {% if agents_on %}<button class="btn primary" type="submit">Write launch digest</button>
+      {% else %}<button class="btn" type="button" disabled title="{{ agents_off_text }}">Write launch digest</button>{% endif %}
+    </form>
+  </div>
+  <div class="chart-wrap">{{ chart }}</div>
+  {% if latest %}<p class="pmeta">Latest launch digest: <a href="/reports/digest/{{ latest.id }}{{ f.qs() }}">{{ latest.created_at|utc }}</a></p>{% endif %}
+</section>
+<div class="grid2">
+  <section class="panel"><div class="panel-head"><h2>Messages about the launch</h2><span class="note">keywords: {{ data.launch.keywords|join(', ') }}</span></div>
+    <div class="msgs">{% for m in cards %}{{ message_card(m, now, f) }}{% else %}<p class="empty">No messages mention this launch yet.</p>{% endfor %}</div>
+  </section>
+  <section class="panel"><div class="panel-head"><h2>Top pain points since launch</h2></div>
+    {% for t in data.top_themes_after %}
+    <div class="pain-row" style="grid-template-columns:minmax(0,1fr) auto"><div><a class="pname row-btn" href="/pain{{ f.qs(theme=t.theme_id) }}">{{ t.name }}</a><div class="pmeta">{{ t.volume }} msgs</div></div><span class="score">{{ t.score|round|int }}</span></div>
+    {% else %}<p class="empty">No pain points since launch.</p>{% endfor %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

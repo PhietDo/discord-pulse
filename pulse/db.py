@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS digests (
     markdown TEXT NOT NULL,
     cited_message_ids TEXT NOT NULL,
     run_id INTEGER REFERENCES agent_runs(id),
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    removed_citations TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS investigations (
@@ -131,7 +132,8 @@ CREATE TABLE IF NOT EXISTS investigations (
     markdown TEXT,
     cited_message_ids TEXT NOT NULL DEFAULT '[]',
     run_id INTEGER REFERENCES agent_runs(id),
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    removed_citations TEXT NOT NULL DEFAULT '[]'
 );
 """
 
@@ -145,6 +147,8 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("themed_at", "TEXT"),
     ),
     "messages": (("parent_channel_id", "TEXT"),),
+    "digests": (("removed_citations", "TEXT NOT NULL DEFAULT '[]'"),),
+    "investigations": (("removed_citations", "TEXT NOT NULL DEFAULT '[]'"),),
 }
 
 

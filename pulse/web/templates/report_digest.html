@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import message_card %}
+{% block title %}{{ 'Launch digest' if d.kind == 'launch' else 'Weekly digest' }}{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>{% if d.kind == 'launch' %}Launch digest: {{ d.launch }}{% else %}Weekly digest{% endif %}</h1>
+    <p class="sub">{{ d.period_start|utc }} to {{ d.period_end|utc }} · written {{ d.created_at|utc }}</p></div>
+  <a class="btn" href="/reports{{ f.qs() }}">All reports</a>
+</div>
+<div class="grid2">
+  <section class="panel"><div class="report">{{ html }}</div>
+    {% if removed %}<p class="pmeta">{{ removed|length }} {{ 'citation' if removed|length == 1 else 'citations' }} removed because the agent was not shown {{ 'that message' if removed|length == 1 else 'those messages' }}.</p>{% endif %}
+  </section>
+  <section class="panel"><div class="panel-head"><h2>Messages cited</h2></div>
+    <div class="msgs">{% for m in cited %}{{ message_card(m, now, f) }}{% else %}<p class="empty">No messages cited.</p>{% endfor %}</div>
+  </section>
+</div>
+{% endblock %}

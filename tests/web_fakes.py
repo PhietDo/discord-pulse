@@ -94,3 +94,16 @@ def make_client(tmp_path: Path, *, seeded=True, llm_factory=None, demo=False, co
         clock=lambda: NOW, llm_factory=llm_factory,
     )
     return TestClient(create_app(settings))
+
+
+def fake_llm_factory(handler):
+    """An llm_factory whose LLMClient answers through a FakeBackend(handler=handler)."""
+    from tests.fakes import FakeBackend, make_llm
+
+    backend = FakeBackend(handler=handler)
+
+    def factory(conn, config):
+        return make_llm(conn, config, backend)
+
+    factory.backend = backend
+    return factory
