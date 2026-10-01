@@ -1,0 +1,484 @@
+<title>Discord Pulse Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F3F5F8; --surface:#FFFFFF; --sunk:#EBEFF4; --ink:#17202D; --muted:#5A6577; --faint:#8A94A5; --line:#DDE3EB;
+  --accent:#0E7C86; --accent-ink:#FFFFFF; --accent-soft:#DDF1F2;
+  --neg:#C2410C; --neg-soft:#FBE7DC; --pos:#1D7A45; --pos-soft:#DCF1E4; --warn:#A16207; --warn-soft:#FBF0D3;
+  --team:#4F46E5; --team-soft:#E5E4FB;
+  --display:"Schibsted Grotesk","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E131A; --surface:#151C26; --sunk:#1B2430; --ink:#E5EAF1; --muted:#9AA5B6; --faint:#6C7789; --line:#263142;
+    --accent:#3FB8C2; --accent-ink:#0B1218; --accent-soft:#16343A;
+    --neg:#F0844E; --neg-soft:#3A2218; --pos:#4FC27E; --pos-soft:#17331F; --warn:#E0B24A; --warn-soft:#352B12;
+    --team:#9C96FF; --team-soft:#24234A;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E131A; --surface:#151C26; --sunk:#1B2430; --ink:#E5EAF1; --muted:#9AA5B6; --faint:#6C7789; --line:#263142;
+  --accent:#3FB8C2; --accent-ink:#0B1218; --accent-soft:#16343A;
+  --neg:#F0844E; --neg-soft:#3A2218; --pos:#4FC27E; --pos-soft:#17331F; --warn:#E0B24A; --warn-soft:#352B12;
+  --team:#9C96FF; --team-soft:#24234A;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--body);padding-inline:16px;padding-block:16px 40px}
+.app{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px}
+@media (max-width:860px){.app{grid-template-columns:minmax(0,1fr)}}
+/* nav */
+.side{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);align-self:start;display:flex;flex-direction:column;gap:18px}
+@media (max-width:860px){.side{position:static}}
+.brand{display:flex;align-items:center;gap:10px;font:700 17px/1 var(--display);letter-spacing:-.01em}
+.brand svg{flex:none}
+.server{font:500 12px/1.3 var(--body);color:var(--muted)}
+.server b{display:block;color:var(--ink);font-weight:600;font-size:13px}
+nav ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+@media (max-width:860px){nav ul{flex-direction:row;flex-wrap:wrap;gap:6px}}
+nav button{all:unset;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;color:var(--muted);font-weight:500}
+@media (max-width:860px){nav button{width:auto;border:1px solid var(--line);background:var(--surface)}}
+nav button:hover{background:var(--sunk);color:var(--ink)}
+nav button[aria-current="page"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+nav button:focus-visible,.btn:focus-visible,a:focus-visible,.chip:focus-visible,.row-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+nav button[disabled]{cursor:default;opacity:.5}
+nav button[disabled]:hover{background:none;color:var(--muted)}
+.count{font:500 11px/1 var(--mono);padding:3px 6px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.count.hot{background:var(--neg-soft);color:var(--neg)}
+.later{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.sample{font-size:12px;color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:10px 12px}
+.sample b{color:var(--ink)}
+/* main */
+main{min-width:0;display:flex;flex-direction:column;gap:20px}
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font:700 26px/1.15 var(--display);letter-spacing:-.02em;margin:0;text-wrap:balance}
+h2{font:600 16px/1.3 var(--display);margin:0;letter-spacing:-.005em}
+.sub{color:var(--muted);margin:4px 0 0}
+.range{display:flex;gap:4px;background:var(--sunk);padding:3px;border-radius:8px}
+.range button{all:unset;cursor:pointer;padding:5px 10px;border-radius:6px;font:500 12px/1 var(--body);color:var(--muted)}
+.range button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
+.panel-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:14px}
+.panel-head .note{color:var(--muted);font-size:12px}
+.grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1040px){.grid2{grid-template-columns:minmax(0,1fr)}}
+/* stats strip */
+.strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+@media (max-width:640px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stat{padding:14px 16px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.stat:first-child{border-left:0}
+@media (max-width:1040px){.strip{grid-template-columns:repeat(3,minmax(0,1fr))}.stat:nth-child(4){border-left:0}.stat:nth-child(n+4){border-top:1px solid var(--line)}}
+@media (max-width:640px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}.stat:nth-child(n){border-left:1px solid var(--line);border-top:0}.stat:nth-child(odd){border-left:0}.stat:nth-child(n+3){border-top:1px solid var(--line)}}
+.label{font:500 11px/1.2 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.big{font:600 24px/1.1 var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.delta{font:500 12px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.neg{color:var(--neg)} .pos{color:var(--pos)} .warnc{color:var(--warn)} .mut{color:var(--muted)}
+/* chart */
+.chart-wrap{overflow-x:auto}
+.chart{width:100%;min-width:520px;height:auto;display:block}
+.chart text{font:11px var(--mono);fill:var(--faint)}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .zero{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.chart .bar{fill:var(--line)}
+.chart .line{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+.chart .area{fill:var(--accent);opacity:.10}
+.chart .dot{fill:var(--accent)}
+.chart .end{fill:var(--surface);stroke:var(--accent);stroke-width:2.2}
+.chart .launch{stroke:var(--warn);stroke-width:1.5}
+.chart .launch-t{fill:var(--warn);font-weight:500}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:5px;font:500 11px/1 var(--body);padding:4px 8px;border-radius:999px;white-space:nowrap;letter-spacing:.01em}
+.pill.frustrated{background:var(--neg-soft);color:var(--neg)}
+.pill.unanswered{background:var(--warn-soft);color:var(--warn)}
+.pill.kind{background:var(--sunk);color:var(--muted)}
+.pill.team{background:var(--team-soft);color:var(--team)}
+.pill.rising{background:var(--neg-soft);color:var(--neg)}
+.pill.ok{background:var(--pos-soft);color:var(--pos)}
+.dotc{width:6px;height:6px;border-radius:50%;background:currentColor}
+/* pain list */
+.pain{display:flex;flex-direction:column}
+.pain-row{display:grid;grid-template-columns:28px minmax(0,1fr) 92px 64px;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.pain-row:first-child{border-top:0;padding-top:2px}
+.rank{font:500 12px var(--mono);color:var(--faint);font-variant-numeric:tabular-nums}
+.pname{font-weight:600}
+.pmeta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.score{font:600 15px/1 var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.spark{width:92px;height:28px;display:block}
+.spark path.l{fill:none;stroke:var(--neg);stroke-width:1.6}
+.spark path.a{fill:var(--neg);opacity:.12}
+.spark circle{fill:var(--neg)}
+/* message cards */
+.msgs{display:flex;flex-direction:column;gap:10px}
+.msg{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+.msg.done{opacity:.55}
+.av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font:600 13px/1 var(--display);color:#fff}
+.mhead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:12px;color:var(--muted)}
+.mhead .who{font-weight:600;color:var(--ink);font-size:13px}
+.mhead .where{font-family:var(--mono)}
+.mtext{margin:4px 0 8px;overflow-wrap:anywhere}
+.mtext code{font:12.5px var(--mono);background:var(--sunk);padding:1px 4px;border-radius:4px}
+.mfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:12px}
+.mfoot a{color:var(--accent);text-decoration:none;font-weight:500}
+.mfoot a:hover{text-decoration:underline}
+.sent{font:500 11px var(--mono);font-variant-numeric:tabular-nums}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font:500 12px/1 var(--body);padding:7px 10px;border-radius:7px;border:1px solid var(--line);color:var(--ink);background:var(--surface)}
+.btn:hover{background:var(--sunk)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.06)}
+.actions{display:flex;gap:6px;margin-left:auto}
+/* table */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th{font:500 11px/1.2 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 10px 10px;border-bottom:1px solid var(--line)}
+td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:middle;font-variant-numeric:tabular-nums}
+td.num,th.num{text-align:right;font-family:var(--mono)}
+tr.sel td{background:var(--accent-soft)}
+.row-btn{all:unset;cursor:pointer;font-weight:600;color:var(--ink)}
+.row-btn:hover{color:var(--accent)}
+.evidence{display:flex;flex-direction:column;gap:12px}
+.inv{border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--sunk)}
+.inv p{margin:6px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{all:unset;cursor:pointer;font:500 12px/1 var(--body);padding:6px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--surface)}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.bug-groups{display:flex;flex-direction:column;gap:20px}
+.bug-group h3{font:600 14px/1.3 var(--display);margin:0 0 4px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.bug-group .pmeta{margin-bottom:10px}
+.empty{color:var(--muted);padding:12px 0}
+.stack{display:flex;flex-direction:column;gap:20px;min-width:0}
+.mix{display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px}
+.mix span{display:block;height:100%}
+.mix-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mix-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.mix-legend b{color:var(--ink);font-weight:600;margin-left:4px}
+table.chan{min-width:540px}
+table.chan th,table.chan td{padding-inline:8px}
+table.chan th{white-space:nowrap}
+table.chan td{padding:9px 10px}
+.share{display:flex;align-items:center;gap:8px;font:500 12px var(--mono);font-variant-numeric:tabular-nums}
+.share .track{flex:1;max-width:64px;min-width:40px;height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.share .fill{height:100%;background:var(--neg)}
+.status-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:-4px 0 14px}
+select{font:500 13px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.filter{display:flex;flex-direction:column;gap:6px}
+.view[hidden]{display:none!important}
+.foot{color:var(--faint);font-size:12px}
+@media (prefers-reduced-motion:no-preference){.btn,.chip,nav button{transition:background .12s,color .12s}}
+</style>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M4 14h4l2.5-6 4 11 2.5-5H22" fill="none" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Discord Pulse
+    </div>
+    <div class="server"><b>Acme SDK Community</b>#help · #general · #feedback · #announcements</div>
+    <div class="filter"><label for="ch-sel" class="label">Channel</label><select id="ch-sel"><option value="all">All channels</option><option value="help">#help</option><option value="general">#general</option><option value="feedback">#feedback</option><option value="announcements">#announcements</option></select></div>
+    <nav aria-label="Views">
+      <ul>
+        <li><button data-view="overview" aria-current="page">Overview</button></li>
+        <li><button data-view="pain">Pain points <span class="count" id="n-pain"></span></button></li>
+        <li><button data-view="bugs">Bugs <span class="count" id="n-bugs"></span></button></li>
+        <li><button data-view="queue">Mod queue <span class="count hot" id="n-queue"></span></button></li>
+        <li><button disabled>Launch <span class="later">plan 4</span></button></li>
+        <li><button disabled>Messages <span class="later">plan 4</span></button></li>
+        <li><button disabled>Reports <span class="later">plan 4</span></button></li>
+        <li><button disabled>Runs <span class="later">plan 4</span></button></li>
+      </ul>
+    </nav>
+    <p class="sample"><b>Mockup with sample data.</b> Messages, labels and the mod queue come from the synthetic Acme SDK test run (triage v2, gpt-5.4-mini). Days before Sep 28, pain-point names and statuses are illustrative. In this mockup the channel filter narrows the message lists; the live dashboard will also recompute the numbers and chart.</p>
+  </aside>
+
+  <main>
+    <!-- OVERVIEW -->
+    <section class="view" id="v-overview" aria-labelledby="h-overview">
+      <div class="head">
+        <div><h1 id="h-overview">Community pulse</h1><p class="sub">Last 14 days · updated Sep 30, 14:10 UTC · next run in 22 min</p></div>
+        <div class="range" role="group" aria-label="Period"><button aria-pressed="false">7d</button><button aria-pressed="true">14d</button><button aria-pressed="false">30d</button></div>
+      </div>
+      <div class="strip" style="margin-top:16px">
+        <div class="stat"><span class="label">Messages, 7 days</span><span class="big" id="s-vol"></span><span class="delta neg" id="s-vol-d"></span></div>
+        <div class="stat"><span class="label">Avg sentiment</span><span class="big" id="s-sent"></span><span class="delta neg" id="s-sent-d"></span></div>
+        <div class="stat"><span class="label">Needs a reply</span><span class="big neg" id="s-queue"></span><span class="delta mut" id="s-queue-d"></span></div>
+        <div class="stat"><span class="label">First staff reply</span><span class="big">24 min</span><span class="delta neg">6 of 67 answered · 34 waiting &gt;24h</span></div>
+        <div class="stat"><span class="label">Spend today</span><span class="big">$0.04</span><span class="delta mut">of $5.00 daily cap</span></div>
+      </div>
+      <div class="grid2" style="margin-top:20px">
+        <div class="stack">
+        <div class="panel">
+          <div class="panel-head"><h2>Sentiment and volume</h2><span class="note">daily average, −2 to +2 scale</span></div>
+          <div class="chart-wrap"><svg class="chart" id="chart" viewBox="0 0 640 250" role="img" aria-label="Daily average sentiment and message volume, last 14 days"></svg></div>
+          <div class="legend"><span><i style="background:var(--accent)"></i>avg sentiment</span><span><i style="background:var(--line);height:8px"></i>messages per day</span><span><i style="background:var(--warn)"></i>launch</span></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Where it's coming from</h2><span class="note">since the v2.0 launch · community messages</span></div>
+          <div class="mix" id="mix" role="img" aria-label="Message mix by type"></div>
+          <div class="mix-legend" id="mix-legend"></div>
+          <div class="tbl-wrap" style="margin-top:14px"><table class="chan">
+            <thead><tr><th>Channel</th><th class="num">Msgs</th><th class="num">Avg</th><th>Negative</th><th class="num">Need reply</th><th class="num">Median reply</th><th class="num">Wait &gt;24h</th></tr></thead>
+            <tbody id="chan-body"></tbody>
+          </table></div>
+        </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Rising pain points</h2><button class="btn" data-go="pain">All pain points</button></div>
+          <div class="pain" id="ov-pain"></div>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:20px">
+        <div class="panel">
+          <div class="panel-head"><h2>Needs attention</h2><button class="btn" data-go="queue">Open mod queue</button></div>
+          <div class="msgs" id="ov-queue"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Landing well</h2><span class="note">most positive this week</span></div>
+          <div class="msgs" id="ov-praise"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAIN POINTS -->
+    <section class="view" id="v-pain" aria-labelledby="h-pain" hidden>
+      <div class="head"><div><h1 id="h-pain">Pain points</h1><p class="sub">Score = volume (7d) × mean negativity × (1 + growth vs the previous 7 days)</p></div></div>
+      <div class="panel" style="margin-top:16px">
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Pain point</th><th>Status</th><th>Trend, 14d</th><th class="num">Msgs 7d</th><th class="num">Prev 7d</th><th class="num">Negativity</th><th class="num">Score</th></tr></thead>
+          <tbody id="pain-body"></tbody>
+        </table></div>
+      </div>
+      <div class="grid2" style="margin-top:20px">
+        <div class="panel">
+          <div class="panel-head"><h2 id="ev-title"></h2><span class="note" id="ev-note"></span></div>
+          <div class="status-row"><label for="st-sel" class="label">Status</label><select id="st-sel"><option value="new">Not triaged</option><option value="acknowledged">Acknowledged</option><option value="in-progress">Fix in progress</option><option value="shipped">Fix shipped</option></select><span class="pmeta" id="st-note"></span></div>
+          <div class="msgs" id="ev-msgs"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Ask why</h2></div>
+          <div class="evidence">
+            <p class="mut" style="margin:0">Investigate reads stats and messages with read-only tools and writes a short answer. Every claim links to the messages it used.</p>
+            <button class="btn primary" id="inv-btn" style="align-self:flex-start">Investigate this pain point</button>
+            <div class="inv" id="inv-out" hidden>
+              <span class="label">Example answer</span>
+              <p id="inv-text"></p>
+              <p class="foot">Sonnet · 6 tool calls · $0.18 · cited messages only</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BUGS -->
+    <section class="view" id="v-bugs" aria-labelledby="h-bugs" hidden>
+      <div class="head">
+        <div><h1 id="h-bugs">Bugs</h1><p class="sub">Bug reports from any channel, grouped by pain point. Unanswered ones are also in the mod queue.</p></div>
+        <div class="chips" role="group" aria-label="Filter bugs"><button class="chip" data-bf="all" aria-pressed="true">All</button><button class="chip" data-bf="open" aria-pressed="false">No staff reply</button></div>
+      </div>
+      <div class="bug-groups" id="bug-groups" style="margin-top:16px"></div>
+    </section>
+
+    <!-- MOD QUEUE -->
+    <section class="view" id="v-queue" aria-labelledby="h-queue" hidden>
+      <div class="head">
+        <div><h1 id="h-queue">Mod queue</h1><p class="sub">Frustrated users first, then most likely to need a reply, oldest first. Closes itself when staff reply in the thread.</p></div>
+        <div class="chips" role="group" aria-label="Filter queue"><button class="chip" data-qf="all" aria-pressed="true">All</button><button class="chip" data-qf="frustrated" aria-pressed="false">Frustrated</button><button class="chip" data-qf="unanswered" aria-pressed="false">Unanswered</button></div>
+      </div>
+      <div class="msgs" id="queue-list" style="margin-top:16px"></div>
+    </section>
+  </main>
+</div>
+
+<script id="data" type="application/json">{"queue": [{"id": "1100000000000000007", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "alice", "team": false, "t": "2026-09-28T03:52", "s": -2, "k": "bug", "c": "Install fails on M1 after upgrading to v2: `error: no matching wheel for arm64`", "why": "frustrated"}, {"id": "1100000000000000013", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "erin", "team": false, "t": "2026-09-28T09:32", "s": -2, "k": "bug", "c": "third day in a row my CI is broken by the v2 upgrade. this is unusable, we're seriously considering switching", "why": "frustrated"}, {"id": "1100000000000000097", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "gus", "team": false, "t": "2026-09-28T21:26", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing", "why": "frustrated"}, {"id": "1100000000000000032", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "erin", "team": false, "t": "2026-09-29T15:32", "s": -2, "k": "docs", "c": "the migration broke our prod auth for 2 hours. no warning in the changelog that v1 tokens were removed", "why": "frustrated"}, {"id": "1100000000000000079", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "wes", "team": false, "t": "2026-09-29T20:57", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing", "why": "frustrated"}, {"id": "1100000000000000115", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-30T01:48", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing", "why": "frustrated"}, {"id": "1100000000000000133", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-28T04:41", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing", "why": "unanswered"}, {"id": "1100000000000000008", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "bob", "team": false, "t": "2026-09-28T04:52", "s": -1, "k": "docs", "c": "How do I migrate `acme.login()` calls to the new auth flow? The guide skips the token exchange step", "why": "unanswered"}, {"id": "1100000000000000009", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T05:03", "s": -1, "k": "docs", "c": "same question as bob, the auth quickstart is really confusing", "why": "unanswered"}, {"id": "1100000000000000034", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-28T05:04", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry", "why": "unanswered"}, {"id": "1100000000000000043", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-28T05:10", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing", "why": "unanswered"}, {"id": "1100000000000000040", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "dan", "team": false, "t": "2026-09-28T05:24", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL", "why": "unanswered"}, {"id": "1100000000000000091", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "ivy", "team": false, "t": "2026-09-28T07:53", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday", "why": "unanswered"}, {"id": "1100000000000000070", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "jo", "team": false, "t": "2026-09-28T08:48", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did", "why": "unanswered"}, {"id": "1100000000000000105", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T09:34", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API", "why": "unanswered"}, {"id": "1100000000000000055", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "dan", "team": false, "t": "2026-09-28T10:20", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday", "why": "unanswered"}, {"id": "1100000000000000014", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-28T11:12", "s": -1, "k": "bug", "c": "anyone know why `acme deploy` hangs on WSL2 with v2?", "why": "unanswered"}, {"id": "1100000000000000015", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "gus", "team": false, "t": "2026-09-28T11:32", "s": -1, "k": "bug", "c": "love how the CLI now wipes my config on every update \ud83d\ude44", "why": "unanswered"}, {"id": "1100000000000000121", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "quin", "team": false, "t": "2026-09-28T14:09", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links", "why": "unanswered"}, {"id": "1100000000000000082", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "quin", "team": false, "t": "2026-09-28T14:31", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry", "why": "unanswered"}, {"id": "1100000000000000103", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "gus", "team": false, "t": "2026-09-28T18:20", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links", "why": "unanswered"}, {"id": "1100000000000000069", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "lee", "team": false, "t": "2026-09-28T18:55", "s": 0, "k": "docs", "c": "is there a v1 -> v2 auth migration example anywhere?", "why": "unanswered"}, {"id": "1100000000000000088", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T19:00", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL", "why": "unanswered"}, {"id": "1100000000000000135", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T19:42", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim", "why": "unanswered"}, {"id": "1100000000000000136", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "uma", "team": false, "t": "2026-09-28T19:48", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL", "why": "unanswered"}, {"id": "1100000000000000093", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ivy", "team": false, "t": "2026-09-29T00:50", "s": 0, "k": "docs", "c": "is there a v1 -> v2 auth migration example anywhere?", "why": "unanswered"}, {"id": "1100000000000000052", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T02:35", "s": -1, "k": "bug", "c": "config file got reset again after `acme update`", "why": "unanswered"}, {"id": "1100000000000000075", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ivy", "team": false, "t": "2026-09-29T03:37", "s": -1, "k": "docs", "c": "the auth docs mention `exchange_token()` but it doesn't exist in 2.0.1", "why": "unanswered"}, {"id": "1100000000000000057", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "nia", "team": false, "t": "2026-09-29T03:52", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API", "why": "unanswered"}, {"id": "1100000000000000129", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "hal", "team": false, "t": "2026-09-29T04:53", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API", "why": "unanswered"}, {"id": "1100000000000000111", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T05:25", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim", "why": "unanswered"}, {"id": "1100000000000000039", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-29T08:10", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim", "why": "unanswered"}, {"id": "1100000000000000109", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T08:11", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday", "why": "unanswered"}, {"id": "1100000000000000024", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-29T10:32", "s": -1, "k": "bug", "c": "lol broke again", "why": "unanswered"}, {"id": "1100000000000000112", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ben", "team": false, "t": "2026-09-29T11:19", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL", "why": "unanswered"}, {"id": "1100000000000000123", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "hal", "team": false, "t": "2026-09-29T13:32", "s": -1, "k": "docs", "c": "the auth docs mention `exchange_token()` but it doesn't exist in 2.0.1", "why": "unanswered"}, {"id": "1100000000000000124", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-29T14:01", "s": -1, "k": "bug", "c": "config file got reset again after `acme update`", "why": "unanswered"}, {"id": "1100000000000000127", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T14:01", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday", "why": "unanswered"}, {"id": "1100000000000000061", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-29T15:58", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing", "why": "unanswered"}, {"id": "1100000000000000099", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T16:09", "s": -1, "k": "docs", "c": "the auth docs mention `exchange_token()` but it doesn't exist in 2.0.1", "why": "unanswered"}, {"id": "1100000000000000130", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ben", "team": false, "t": "2026-09-29T16:11", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry", "why": "unanswered"}, {"id": "1100000000000000046", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "pat", "team": false, "t": "2026-09-29T16:34", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did", "why": "unanswered"}, {"id": "1100000000000000063", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "lee", "team": false, "t": "2026-09-29T17:03", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim", "why": "unanswered"}, {"id": "1100000000000000085", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "jo", "team": false, "t": "2026-09-29T17:23", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links", "why": "unanswered"}, {"id": "1100000000000000058", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T20:34", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry", "why": "unanswered"}, {"id": "1100000000000000073", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "nia", "team": false, "t": "2026-09-29T22:45", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday", "why": "unanswered"}, {"id": "1100000000000000033", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-29T23:01", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API", "why": "unanswered"}, {"id": "1100000000000000045", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "yas", "team": false, "t": "2026-09-29T23:43", "s": -1, "k": "docs", "c": "is there a v1 -> v2 auth migration example anywhere?", "why": "unanswered"}, {"id": "1100000000000000094", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "rin", "team": false, "t": "2026-09-30T00:06", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did", "why": "unanswered"}, {"id": "1100000000000000076", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-30T01:07", "s": -1, "k": "bug", "c": "config file got reset again after `acme update`", "why": "unanswered"}, {"id": "1100000000000000037", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-30T01:33", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday", "why": "unanswered"}], "bugs": [{"id": "1100000000000000106", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-30T14:09", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000087", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-30T12:54", "s": -1, "k": "bug", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim"}, {"id": "1100000000000000064", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "wes", "team": false, "t": "2026-09-30T11:59", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000118", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "wes", "team": false, "t": "2026-09-30T07:50", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000100", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "uma", "team": false, "t": "2026-09-30T06:21", "s": -1, "k": "bug", "c": "config file got reset again after `acme update`"}, {"id": "1100000000000000115", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-30T01:48", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000037", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-30T01:33", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000076", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-30T01:07", "s": -1, "k": "bug", "c": "config file got reset again after `acme update`"}, {"id": "1100000000000000094", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "rin", "team": false, "t": "2026-09-30T00:06", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000073", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "nia", "team": false, "t": "2026-09-29T22:45", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000079", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "wes", "team": false, "t": "2026-09-29T20:57", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000058", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T20:34", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000046", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "pat", "team": false, "t": "2026-09-29T16:34", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000130", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ben", "team": false, "t": "2026-09-29T16:11", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000061", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-29T15:58", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000124", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-29T14:01", "s": -1, "k": "bug", "c": "config file got reset again after `acme update`"}, {"id": "1100000000000000127", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T14:01", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000112", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ben", "team": false, "t": "2026-09-29T11:19", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000024", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-29T10:32", "s": -1, "k": "bug", "c": "lol broke again"}, {"id": "1100000000000000109", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T08:11", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000052", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T02:35", "s": -1, "k": "bug", "c": "config file got reset again after `acme update`"}, {"id": "1100000000000000097", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "gus", "team": false, "t": "2026-09-28T21:26", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000136", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "uma", "team": false, "t": "2026-09-28T19:48", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000088", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T19:00", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000016", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "hal", "team": false, "t": "2026-09-28T14:32", "s": -1, "k": "bug", "c": "rate limits on the new API seem way lower, getting 429s at 10 rps"}, {"id": "1100000000000000082", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "quin", "team": false, "t": "2026-09-28T14:31", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000015", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "gus", "team": false, "t": "2026-09-28T11:32", "s": -1, "k": "bug", "c": "love how the CLI now wipes my config on every update \ud83d\ude44"}, {"id": "1100000000000000014", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-28T11:12", "s": -1, "k": "bug", "c": "anyone know why `acme deploy` hangs on WSL2 with v2?"}, {"id": "1100000000000000055", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "dan", "team": false, "t": "2026-09-28T10:20", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000013", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "erin", "team": false, "t": "2026-09-28T09:32", "s": -2, "k": "bug", "c": "third day in a row my CI is broken by the v2 upgrade. this is unusable, we're seriously considering switching"}, {"id": "1100000000000000070", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "jo", "team": false, "t": "2026-09-28T08:48", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000091", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "ivy", "team": false, "t": "2026-09-28T07:53", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000040", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "dan", "team": false, "t": "2026-09-28T05:24", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000043", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-28T05:10", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000034", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-28T05:04", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000133", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-28T04:41", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000139", "ch": "1100000000000000007", "chn": "M1 install fails on v2", "thread": true, "a": "vic", "team": false, "t": "2026-09-28T04:12", "s": -1, "k": "bug", "c": "same here on M2 Pro"}, {"id": "1100000000000000138", "ch": "1100000000000000007", "chn": "M1 install fails on v2", "thread": true, "a": "alice", "team": false, "t": "2026-09-28T03:56", "s": -1, "k": "bug", "c": "tried pip 24 and a fresh venv, same error"}, {"id": "1100000000000000007", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "alice", "team": false, "t": "2026-09-28T03:52", "s": -2, "k": "bug", "c": "Install fails on M1 after upgrading to v2: `error: no matching wheel for arm64`"}, {"id": "1100000000000000006", "ch": "500000000000000001", "chn": "announcements", "thread": false, "a": "zed", "team": false, "t": "2026-09-28T03:23", "s": -1, "k": "bug", "c": "lol cool, another breaking change right before my release \ud83d\ude43"}], "praise": [{"id": "1100000000000000031", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "uma", "team": false, "t": "2026-09-29T12:12", "s": 2, "k": "praise", "c": "honestly v2 is the best release you've shipped, great work team"}, {"id": "1100000000000000023", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "mo", "team": false, "t": "2026-09-29T03:52", "s": 2, "k": "praise", "c": "v2 builds cut our CI from 12 min to 4 \ud83d\udd25"}, {"id": "1100000000000000020", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "kai", "team": false, "t": "2026-09-28T04:22", "s": 2, "k": "praise", "c": "the new dashboard is sick, way faster"}, {"id": "1100000000000000059", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "carol", "team": false, "t": "2026-09-30T10:27", "s": 1, "k": "praise", "c": "cold start is so much faster in v2, nice"}, {"id": "1100000000000000089", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "mo", "team": false, "t": "2026-09-30T10:19", "s": 1, "k": "praise", "c": "python 3.13 wheels finally, thank you \ud83d\ude4f"}, {"id": "1100000000000000077", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "xan", "team": false, "t": "2026-09-30T03:16", "s": 1, "k": "praise", "c": "migrated our whole monorepo in an afternoon, smooth"}], "themes": {"auth": [{"id": "1100000000000000032", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "erin", "team": false, "t": "2026-09-29T15:32", "s": -2, "k": "docs", "c": "the migration broke our prod auth for 2 hours. no warning in the changelog that v1 tokens were removed"}, {"id": "1100000000000000087", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-30T12:54", "s": -1, "k": "bug", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim"}, {"id": "1100000000000000117", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-30T06:37", "s": -1, "k": "docs", "c": "is there a v1 -> v2 auth migration example anywhere?"}, {"id": "1100000000000000081", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "jo", "team": false, "t": "2026-09-30T05:08", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API"}, {"id": "1100000000000000051", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "pat", "team": false, "t": "2026-09-30T03:01", "s": -1, "k": "docs", "c": "the auth docs mention `exchange_token()` but it doesn't exist in 2.0.1"}, {"id": "1100000000000000045", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "yas", "team": false, "t": "2026-09-29T23:43", "s": -1, "k": "docs", "c": "is there a v1 -> v2 auth migration example anywhere?"}, {"id": "1100000000000000033", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-29T23:01", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API"}, {"id": "1100000000000000063", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "lee", "team": false, "t": "2026-09-29T17:03", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim"}, {"id": "1100000000000000099", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T16:09", "s": -1, "k": "docs", "c": "the auth docs mention `exchange_token()` but it doesn't exist in 2.0.1"}, {"id": "1100000000000000123", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "hal", "team": false, "t": "2026-09-29T13:32", "s": -1, "k": "docs", "c": "the auth docs mention `exchange_token()` but it doesn't exist in 2.0.1"}, {"id": "1100000000000000039", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-29T08:10", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim"}, {"id": "1100000000000000111", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T05:25", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim"}, {"id": "1100000000000000129", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "hal", "team": false, "t": "2026-09-29T04:53", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API"}, {"id": "1100000000000000057", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "nia", "team": false, "t": "2026-09-29T03:52", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API"}, {"id": "1100000000000000075", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ivy", "team": false, "t": "2026-09-29T03:37", "s": -1, "k": "docs", "c": "the auth docs mention `exchange_token()` but it doesn't exist in 2.0.1"}, {"id": "1100000000000000135", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T19:42", "s": -1, "k": "docs", "c": "auth quickstart example throws `InvalidGrant` when copied verbatim"}, {"id": "1100000000000000105", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T09:34", "s": -1, "k": "docs", "c": "where is the token exchange step documented? the v2 auth guide jumps from login to calling the API"}, {"id": "1100000000000000009", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T05:03", "s": -1, "k": "docs", "c": "same question as bob, the auth quickstart is really confusing"}, {"id": "1100000000000000008", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "bob", "team": false, "t": "2026-09-28T04:52", "s": -1, "k": "docs", "c": "How do I migrate `acme.login()` calls to the new auth flow? The guide skips the token exchange step"}, {"id": "1100000000000000093", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ivy", "team": false, "t": "2026-09-29T00:50", "s": 0, "k": "docs", "c": "is there a v1 -> v2 auth migration example anywhere?"}, {"id": "1100000000000000069", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "lee", "team": false, "t": "2026-09-28T18:55", "s": 0, "k": "docs", "c": "is there a v1 -> v2 auth migration example anywhere?"}, {"id": "1100000000000000004", "ch": "500000000000000001", "chn": "announcements", "thread": false, "a": "rin", "team": false, "t": "2026-09-28T03:01", "s": 0, "k": "question", "c": "does the migration guide cover the old token format?"}], "wheels": [{"id": "1100000000000000007", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "alice", "team": false, "t": "2026-09-28T03:52", "s": -2, "k": "bug", "c": "Install fails on M1 after upgrading to v2: `error: no matching wheel for arm64`"}, {"id": "1100000000000000106", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-30T14:09", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000058", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T20:34", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000130", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "ben", "team": false, "t": "2026-09-29T16:11", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000082", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "quin", "team": false, "t": "2026-09-28T14:31", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000034", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "kai", "team": false, "t": "2026-09-28T05:04", "s": -1, "k": "bug", "c": "still getting the arm64 wheel error on 2.0.1 via poetry"}, {"id": "1100000000000000139", "ch": "1100000000000000007", "chn": "M1 install fails on v2", "thread": true, "a": "vic", "team": false, "t": "2026-09-28T04:12", "s": -1, "k": "bug", "c": "same here on M2 Pro"}, {"id": "1100000000000000138", "ch": "1100000000000000007", "chn": "M1 install fails on v2", "thread": true, "a": "alice", "team": false, "t": "2026-09-28T03:56", "s": -1, "k": "bug", "c": "tried pip 24 and a fresh venv, same error"}, {"id": "1100000000000000089", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "mo", "team": false, "t": "2026-09-30T10:19", "s": 1, "k": "praise", "c": "python 3.13 wheels finally, thank you \ud83d\ude4f"}, {"id": "1100000000000000065", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "nia", "team": false, "t": "2026-09-29T21:35", "s": 1, "k": "praise", "c": "python 3.13 wheels finally, thank you \ud83d\ude4f"}, {"id": "1100000000000000113", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-28T20:31", "s": 1, "k": "other", "c": "python 3.13 wheels finally, thank you \ud83d\ude4f"}, {"id": "1100000000000000041", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "jo", "team": false, "t": "2026-09-28T18:17", "s": 1, "k": "other", "c": "python 3.13 wheels finally, thank you \ud83d\ude4f"}, {"id": "1100000000000000137", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "dan", "team": false, "t": "2026-09-28T08:44", "s": 1, "k": "praise", "c": "python 3.13 wheels finally, thank you \ud83d\ude4f"}, {"id": "1100000000000000141", "ch": "1100000000000000007", "chn": "M1 install fails on v2", "thread": true, "a": "alice", "team": false, "t": "2026-09-28T07:12", "s": 1, "k": "other", "c": "2.0.1 works, thanks for the quick fix!"}], "builds": [{"id": "1100000000000000115", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-30T01:48", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000079", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "wes", "team": false, "t": "2026-09-29T20:57", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000097", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "gus", "team": false, "t": "2026-09-28T21:26", "s": -2, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000013", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "erin", "team": false, "t": "2026-09-28T09:32", "s": -2, "k": "bug", "c": "third day in a row my CI is broken by the v2 upgrade. this is unusable, we're seriously considering switching"}, {"id": "1100000000000000061", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-29T15:58", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000043", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-28T05:10", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000133", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "fox", "team": false, "t": "2026-09-28T04:41", "s": -1, "k": "bug", "c": "the status page says green but our builds are failing"}, {"id": "1100000000000000023", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "mo", "team": false, "t": "2026-09-29T03:52", "s": 2, "k": "praise", "c": "v2 builds cut our CI from 12 min to 4 \ud83d\udd25"}], "charts": [{"id": "1100000000000000037", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "zed", "team": false, "t": "2026-09-30T01:33", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000073", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "nia", "team": false, "t": "2026-09-29T22:45", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000127", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T14:01", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000109", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T08:11", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000055", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "dan", "team": false, "t": "2026-09-28T10:20", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000091", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "ivy", "team": false, "t": "2026-09-28T07:53", "s": -1, "k": "bug", "c": "dashboard charts are blank for me since yesterday"}, {"id": "1100000000000000030", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "mo", "team": false, "t": "2026-09-29T05:32", "s": 0, "k": "feature_request", "c": "dark mode for the dashboard pls"}, {"id": "1100000000000000020", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "kai", "team": false, "t": "2026-09-28T04:22", "s": 2, "k": "praise", "c": "the new dashboard is sick, way faster"}], "ratelimit": [{"id": "1100000000000000118", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "wes", "team": false, "t": "2026-09-30T07:50", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000094", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "rin", "team": false, "t": "2026-09-30T00:06", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000046", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "pat", "team": false, "t": "2026-09-29T16:34", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000016", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "hal", "team": false, "t": "2026-09-28T14:32", "s": -1, "k": "bug", "c": "rate limits on the new API seem way lower, getting 429s at 10 rps"}, {"id": "1100000000000000070", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "jo", "team": false, "t": "2026-09-28T08:48", "s": -1, "k": "bug", "c": "getting 429 Too Many Requests way earlier than v1 did"}, {"id": "1100000000000000114", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "bob", "team": false, "t": "2026-09-30T14:07", "s": 0, "k": "feature_request", "c": "please expose retry config on the client"}, {"id": "1100000000000000066", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "ivy", "team": false, "t": "2026-09-29T18:46", "s": 0, "k": "feature_request", "c": "please expose retry config on the client"}, {"id": "1100000000000000042", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "vic", "team": false, "t": "2026-09-29T13:51", "s": 0, "k": "feature_request", "c": "please expose retry config on the client"}, {"id": "1100000000000000090", "ch": "400000000000000001", "chn": "feedback", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T06:45", "s": 0, "k": "feature_request", "c": "please expose retry config on the client"}], "wsl": [{"id": "1100000000000000064", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "wes", "team": false, "t": "2026-09-30T11:59", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000136", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "uma", "team": false, "t": "2026-09-28T19:48", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000088", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "carol", "team": false, "t": "2026-09-28T19:00", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}, {"id": "1100000000000000014", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "fox", "team": false, "t": "2026-09-28T11:12", "s": -1, "k": "bug", "c": "anyone know why `acme deploy` hangs on WSL2 with v2?"}, {"id": "1100000000000000040", "ch": "100000000000000001", "chn": "help", "thread": false, "a": "dan", "team": false, "t": "2026-09-28T05:24", "s": -1, "k": "bug", "c": "`acme deploy` just sits at 'uploading' forever on WSL"}], "docsite": [{"id": "1100000000000000049", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "bob", "team": false, "t": "2026-09-30T10:37", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links"}, {"id": "1100000000000000067", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "dan", "team": false, "t": "2026-09-30T03:27", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links"}, {"id": "1100000000000000085", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "jo", "team": false, "t": "2026-09-29T17:23", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links"}, {"id": "1100000000000000103", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "gus", "team": false, "t": "2026-09-28T18:20", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links"}, {"id": "1100000000000000121", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "quin", "team": false, "t": "2026-09-28T14:09", "s": -1, "k": "docs", "c": "v2 docs site is 404ing on half the links"}], "coldstart": [{"id": "1100000000000000059", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "carol", "team": false, "t": "2026-09-30T10:27", "s": 1, "k": "praise", "c": "cold start is so much faster in v2, nice"}, {"id": "1100000000000000083", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "kai", "team": false, "t": "2026-09-29T05:16", "s": 1, "k": "praise", "c": "cold start is so much faster in v2, nice"}, {"id": "1100000000000000035", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "jo", "team": false, "t": "2026-09-28T20:05", "s": 1, "k": "praise", "c": "cold start is so much faster in v2, nice"}, {"id": "1100000000000000107", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "wes", "team": false, "t": "2026-09-28T13:48", "s": 1, "k": "praise", "c": "cold start is so much faster in v2, nice"}, {"id": "1100000000000000131", "ch": "200000000000000001", "chn": "general", "thread": false, "a": "vic", "team": false, "t": "2026-09-28T03:24", "s": 1, "k": "praise", "c": "cold start is so much faster in v2, nice"}]}}
+</script>
+<script>
+(function(){
+const D = JSON.parse(document.getElementById('data').textContent);
+const GUILD = '900000000000000001';
+const NOW = new Date('2026-09-30T14:10:00Z');
+const $ = s => document.querySelector(s);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtText = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>');
+const PALETTE = ['#0E7C86','#7C3AED','#B45309','#2563EB','#BE185D','#15803D','#9333EA','#C2410C','#0369A1','#4D7C0F'];
+const avColor = n => PALETTE[[...n].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
+const age = t => { const h = Math.round((NOW - new Date(t+':00Z'))/36e5); return h < 1 ? 'just now' : h < 48 ? h+'h ago' : Math.round(h/24)+'d ago'; };
+const when = t => new Date(t+':00Z').toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'})+' UTC';
+const sentLabel = s => (s>0?'+':'')+s;
+let CH='all'; const chFilter = ms => CH==='all' ? ms : ms.filter(m=>m.chn===CH);
+const KIND = {bug:'bug',question:'question',feature_request:'feature request',docs:'docs',praise:'praise',other:'other'};
+
+function card(m, opts={}){
+  const link = `https://discord.com/channels/${GUILD}/${m.ch}/${m.id}`;
+  const why = m.why ? `<span class="pill ${m.why}"><span class="dotc"></span>${m.why}</span>` : '';
+  const acts = opts.actions ? `<span class="actions"><button class="btn" data-act="handled">Mark handled</button><button class="btn" data-act="dismiss">Dismiss</button></span>` : '';
+  const sc = m.s < 0 ? 'neg' : m.s > 0 ? 'pos' : 'mut';
+  return `<article class="msg" data-id="${m.id}" data-why="${m.why||''}">
+    <div class="av" style="background:${avColor(m.a)}" aria-hidden="true">${esc(m.a[0].toUpperCase())}</div>
+    <div>
+      <div class="mhead"><span class="who">${esc(m.a)}</span>${m.team?'<span class="pill team">team</span>':''}<span class="where">#${esc(m.chn)}</span><span title="${when(m.t)}">${age(m.t)}</span>${why}</div>
+      <p class="mtext">${fmtText(m.c)}</p>
+      <div class="mfoot"><a href="${link}" target="_blank" rel="noopener">Open in Discord ↗</a><a href="#" data-author="${esc(m.a)}">All from ${esc(m.a)}</a><span class="pill kind">${KIND[m.k]||m.k}</span><span class="sent ${sc}">sentiment ${sentLabel(m.s)}</span>${acts}</div>
+    </div></article>`;
+}
+
+/* ---------- daily series: last 3 days are real, earlier days illustrative ---------- */
+const days = [];
+for (let i=13;i>=0;i--){ const d=new Date(Date.UTC(2026,8,30-i)); days.push(d); }
+const pre = [[19,.42],[22,.38],[17,.46],[24,.35],[20,.41],[18,.44],[21,.39],[23,.36],[19,.40],[25,.33],[22,.31]];
+const real = [[60,-.22],[50,-.34],[26,-.46]];
+const series = days.map((d,i)=>{ const [n,s] = i<11 ? pre[i] : real[i-11]; return {d,n,s}; });
+const LAUNCH_IDX = 11; // v2.0 launched Sep 28, 02:00 UTC
+
+function drawChart(){
+  const svg = $('#chart'), W=640,H=250, L=44,R=14,T=16,B=30, iw=W-L-R, ih=H-T-B;
+  const x = i => L + iw*(i+.5)/series.length;
+  const ys = v => T + ih*(1-(v+1)/2);           // sentiment axis −1..+1
+  const maxN = 80, yn = n => T + ih*(1-n/maxN);  // volume axis 0..80
+  let g = '';
+  [1,.5,0,-.5,-1].forEach(v=>{ g+=`<line class="${v===0?'zero':'grid'}" x1="${L}" x2="${W-R}" y1="${ys(v)}" y2="${ys(v)}"/><text x="${L-8}" y="${ys(v)+4}" text-anchor="end">${v>0?'+':''}${v}</text>`; });
+  [0,40,80].forEach(n=>{ g+=`<text x="${W-R}" y="${yn(n)-4}" text-anchor="end" opacity=".8">${n?n+' msgs':''}</text>`; });
+  const bw = iw/series.length*.56;
+  series.forEach((p,i)=>{ g+=`<rect class="bar" x="${x(i)-bw/2}" y="${yn(p.n)}" width="${bw}" height="${T+ih-yn(p.n)}" rx="2"/>`; });
+  series.forEach((p,i)=>{ if(i%2===1||i===series.length-1){ g+=`<text x="${x(i)}" y="${H-10}" text-anchor="middle">${p.d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'})}</text>`; }});
+  const lx = x(LAUNCH_IDX)-iw/series.length*.5+iw/series.length*(2/24);
+  g+=`<line class="launch" x1="${lx}" x2="${lx}" y1="${T}" y2="${T+ih}"/><text class="launch-t" x="${lx-6}" y="${T+ih-8}" text-anchor="end">v2.0 launch</text>`;
+  const pts = series.map((p,i)=>[x(i),ys(p.s)]);
+  const line = pts.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ');
+  g+=`<path class="area" d="${line} L${pts.at(-1)[0]} ${ys(-1)} L${pts[0][0]} ${ys(-1)} Z"/>`;
+  g+=`<path class="line" d="${line}"/>`;
+  pts.forEach((q,i)=>{ if(i===pts.length-1){ g+=`<circle class="end" cx="${q[0]}" cy="${q[1]}" r="4.5"/><text x="${q[0]-8}" y="${q[1]+18}" text-anchor="end" style="fill:var(--neg);font-weight:500">${series.at(-1).s}</text>`; } else { g+=`<circle class="dot" cx="${q[0]}" cy="${q[1]}" r="2.4"/>`; }});
+  svg.innerHTML = g;
+}
+
+
+/* ---------- message mix and channels (from the sample run) ---------- */
+const MIX=[['bug',40,'var(--neg)'],['docs',26,'var(--warn)'],['feature request',21,'var(--team)'],['other',23,'var(--faint)'],['praise',20,'var(--pos)'],['question',6,'var(--accent)']];
+const CHANS=[['help',50,-0.87,43,47,'30 min',24],['general',59,0.02,19,18,'—',10],['feedback',23,0.00,1,1,'—',0],['announcements',4,0.25,1,1,'18 min',0]];
+function renderMix(){
+  const tot=MIX.reduce((a,m)=>a+m[1],0);
+  $('#mix').innerHTML=MIX.map(m=>`<span style="flex:${m[1]};background:${m[2]}" title="${m[0]}: ${m[1]}"></span>`).join('');
+  $('#mix-legend').innerHTML=MIX.map(m=>`<span><i style="background:${m[2]}"></i>${m[0]}<b>${Math.round(m[1]/tot*100)}%</b></span>`).join('');
+  $('#chan-body').innerHTML=CHANS.map(c=>{const sh=Math.round(c[3]/c[1]*100);const sc=c[2]<-0.2?'neg':c[2]>0.2?'pos':'mut';return `<tr><td class="where" style="font-family:var(--mono)">#${c[0]}</td><td class="num">${c[1]}</td><td class="num ${sc}">${c[2]>0?'+':''}${c[2].toFixed(2)}</td><td><div class="share"><div class="track"><div class="fill" style="width:${sh}%"></div></div>${sh}%</div></td><td class="num">${c[4]}</td><td class="num">${c[5]}</td><td class="num ${c[6]?'neg':'mut'}">${c[6]}</td></tr>`;}).join('');
+}
+
+/* ---------- pain points (volumes and negativity from the sample run) ---------- */
+const META = {
+  auth:{name:'Auth migration and token exchange docs',prev:2,st:'acknowledged',note:'Docs team rewriting the token exchange section'},
+  wheels:{name:'Install fails on M1 / Python 3.13 (arm64 wheels)',prev:1,st:'in-progress',note:'arm64 and 3.13 wheels building for 2.0.2'},
+  builds:{name:'Builds failing while status page is green',prev:0},
+  charts:{name:'Dashboard charts blank',prev:0,st:'shipped',note:'Fix shipped Sep 30, 09:00 UTC. Sentiment since: watching (needs 3 days of data)'},
+  ratelimit:{name:'429s earlier than v1 (rate limits)',prev:1},
+  wsl:{name:'acme deploy hangs on WSL',prev:1},
+  docsite:{name:'Docs site 404s and broken links',prev:2},
+  coldstart:{name:'Cold start latency',prev:3},
+};
+const pains = Object.entries(D.themes).map(([key,ms])=>{
+  const vol = ms.length, prev = META[key].prev;
+  const neg = vol ? ms.reduce((a,m)=>a+Math.max(0,-m.s),0)/vol : 0;
+  const trend = (vol-prev)/Math.max(prev,1);
+  const score = vol*neg*(1+Math.max(0,trend));
+  const daily = days.map((d,i)=>{ if(i<11) return i>=4 && i%3===0 ? Math.min(prev,1) : 0; const ds=d.toISOString().slice(0,10); return ms.filter(m=>m.t.startsWith(ds)).length; });
+  return {key,name:META[key].name,st:META[key].st||'new',note:META[key].note||'',ms,vol,prev,neg,trend,score,daily};
+}).sort((a,b)=>b.score-a.score);
+
+function spark(daily){
+  const w=92,h=28,max=Math.max(...daily,1), x=i=>2+(w-4)*i/(daily.length-1), y=v=>h-3-(h-6)*v/max;
+  const d = daily.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path class="a" d="${d} L${x(daily.length-1)} ${h} L${x(0)} ${h} Z"/><path class="l" d="${d}"/><circle cx="${x(daily.length-1)}" cy="${y(daily.at(-1))}" r="2.4"/></svg>`;
+}
+const ST={new:['Not triaged','kind'],acknowledged:['Acknowledged','unanswered'],'in-progress':['Fix in progress','team'],shipped:['Fix shipped','ok']};
+const stPill = s => `<span class="pill ${ST[s][1]}">${ST[s][0]}</span>`;
+const trendTxt = p => p.prev===0 ? 'new this week' : p.trend>=2 ? `up from ${p.prev} the week before` : (p.trend>=0?'+':'')+Math.round(p.trend*100)+'% vs prev 7d';
+
+function renderOverview(){
+  const vol = series.slice(-7).reduce((a,p)=>a+p.n,0), pvol = series.slice(-14,-7).reduce((a,p)=>a+p.n,0);
+  const w = series.slice(-7), pw = series.slice(-14,-7);
+  const avg = w.reduce((a,p)=>a+p.s*p.n,0)/vol, pavg = pw.reduce((a,p)=>a+p.s*p.n,0)/pvol;
+  $('#s-vol').textContent = vol; $('#s-vol-d').textContent = `+${Math.round((vol-pvol)/pvol*100)}% vs prev 7d`; $('#s-vol-d').className='delta warnc';
+  $('#s-sent').textContent = (avg>0?'+':'')+avg.toFixed(2); $('#s-sent').className='big neg';
+  $('#s-sent-d').textContent = `${(avg-pavg).toFixed(2)} vs prev 7d (+${pavg.toFixed(2)})`;
+  const fr = D.queue.filter(m=>m.why==='frustrated').length;
+  $('#s-queue').textContent = D.queue.length; $('#s-queue-d').textContent = `${fr} frustrated · oldest ${age(D.queue.reduce((a,m)=>m.t<a?m.t:a, D.queue[0].t))}`;
+  $('#ov-pain').innerHTML = pains.slice(0,5).map((p,i)=>`<div class="pain-row"><span class="rank">${String(i+1).padStart(2,'0')}</span><div><div class="pname">${esc(p.name)}</div><div class="pmeta">${p.vol} msgs · ${trendTxt(p)}</div>${p.st!=='new'?'<div style="margin-top:4px">'+stPill(p.st)+'</div>':''}</div>${spark(p.daily)}<span class="score">${Math.round(p.score)}</span></div>`).join('');
+  $('#ov-queue').innerHTML = chFilter(D.queue).slice(0,3).map(m=>card(m)).join('') || '<p class="empty">Nothing waiting in this channel.</p>';
+  $('#ov-praise').innerHTML = chFilter(D.praise).slice(0,3).map(m=>card(m)).join('') || '<p class="empty">No praise in this channel this week.</p>';
+}
+
+let selPain = null;
+const INV = {
+  auth:'Negativity on auth rose right after the v2.0 launch. Most reports trace to one gap: the migration guide skips the token exchange step, so <code>acme.login()</code> users hit <code>InvalidGrant</code> (bob, carol). Two users found <code>exchange_token()</code> named in the docs but missing from the SDK, and one team lost prod auth for two hours because the changelog did not say v1 tokens stop working. Fixing the guide and adding a changelog warning covers most of this cluster.',
+};
+function renderPain(){
+  $('#pain-body').innerHTML = pains.map(p=>`<tr data-key="${p.key}" class="${p.key===selPain?'sel':''}"><td><button class="row-btn" data-pain="${p.key}">${esc(p.name)}</button><div class="pmeta">${p.prev===0?'<span class="pill rising">new this week</span>':p.trend>1?'<span class="pill rising">rising</span>':''}</div></td><td>${stPill(p.st)}</td><td>${spark(p.daily)}</td><td class="num">${p.vol}</td><td class="num">${p.prev}</td><td class="num">${p.neg.toFixed(2)}</td><td class="num"><b>${Math.round(p.score)}</b></td></tr>`).join('');
+  const p = pains.find(q=>q.key===selPain) || pains[0];
+  selPain = p.key;
+  $('#ev-title').textContent = p.name;
+  $('#ev-note').textContent = `${p.vol} messages · most negative first`;
+  $('#st-sel').value = p.st; $('#st-note').textContent = p.note;
+  $('#ev-msgs').innerHTML = chFilter(p.ms).slice(0,5).map(m=>card(m)).join('') || '<p class="empty">No messages in this channel.</p>';
+  $('#inv-out').hidden = true;
+  $('#inv-btn').textContent = 'Investigate this pain point';
+}
+document.addEventListener('change', e=>{ if(e.target.id==='st-sel'){ const p=pains.find(q=>q.key===selPain); p.st=e.target.value; p.note = p.st==='shipped' ? 'Marked shipped just now. The chart will compare sentiment before and after.' : p.st==='new' ? '' : 'Updated just now'; renderPain(); renderOverview(); } if(e.target.id==='ch-sel'){ CH=e.target.value; renderOverview(); renderPain(); renderBugs(); renderQueue(); } });
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-pain]'); if(b){ selPain=b.dataset.pain; renderPain(); return; }
+  if(e.target.id==='inv-btn'){
+    $('#inv-text').innerHTML = INV[selPain] || 'Investigate would query this theme’s daily sentiment, search its messages and read the threads, then explain what changed with links to each message it used.';
+    $('#inv-out').hidden = false; e.target.textContent = 'Run again';
+  }
+});
+
+/* ---------- bugs ---------- */
+let bugFilter='all';
+function renderBugs(){
+  const queued = new Set(D.queue.map(m=>m.id));
+  const byTheme = pains.map(p=>({p, ms:D.bugs.filter(b=>p.ms.some(m=>m.id===b.id))})).filter(g=>g.ms.length);
+  const themed = new Set(byTheme.flatMap(g=>g.ms.map(m=>m.id)));
+  const other = D.bugs.filter(b=>!themed.has(b.id));
+  if(other.length) byTheme.push({p:{name:'Not yet grouped',vol:other.length}, ms:other});
+  $('#bug-groups').innerHTML = byTheme.map(g=>{
+    const ms = chFilter(bugFilter==='open' ? g.ms.filter(m=>queued.has(m.id)) : g.ms);
+    if(!ms.length) return '';
+    const open = g.ms.filter(m=>queued.has(m.id)).length;
+    return `<div class="panel bug-group"><h3>${esc(g.p.name)} <span class="pill kind">${g.ms.length} reports</span>${open?`<span class="pill unanswered">${open} without staff reply</span>`:'<span class="pill ok">all answered</span>'}</h3><p class="pmeta">${new Set(g.ms.map(m=>m.a)).size} people · first ${age(g.ms.at(-1).t)} · latest ${age(g.ms[0].t)}</p><div class="msgs">${ms.slice(0,3).map(m=>card(queued.has(m.id)?{...m,why:'unanswered'}:m)).join('')}</div></div>`;
+  }).join('') || '<p class="empty">No bug reports in this period.</p>';
+}
+
+/* ---------- mod queue ---------- */
+let qFilter='all'; const closed = new Map();
+function renderQueue(){
+  const ms = chFilter(D.queue.filter(m=>qFilter==='all'||m.why===qFilter));
+  $('#queue-list').innerHTML = ms.map(m=>{ let h=card(m,{actions:!closed.has(m.id)}); if(closed.has(m.id)) h=h.replace('class="msg"','class="msg done"').replace('</p>',`</p><p class="pmeta">${closed.get(m.id)} just now · <button class="btn" data-undo="${m.id}">Undo</button></p>`); return h; }).join('');
+  const open = D.queue.length - closed.size;
+  $('#n-queue').textContent = open; $('#s-queue').textContent = open;
+}
+document.addEventListener('click', e=>{
+  const a = e.target.closest('[data-act]');
+  if(a){ const id=a.closest('.msg').dataset.id; closed.set(id, a.dataset.act==='handled'?'Marked handled':'Dismissed'); renderQueue(); return; }
+  const u = e.target.closest('[data-undo]'); if(u){ closed.delete(u.dataset.undo); renderQueue(); return; }
+  const qf = e.target.closest('[data-qf]'); if(qf){ qFilter=qf.dataset.qf; document.querySelectorAll('[data-qf]').forEach(c=>c.setAttribute('aria-pressed', c===qf)); renderQueue(); return; }
+  const bf = e.target.closest('[data-bf]'); if(bf){ bugFilter=bf.dataset.bf; document.querySelectorAll('[data-bf]').forEach(c=>c.setAttribute('aria-pressed', c===bf)); renderBugs(); return; }
+  if(e.target.closest('[data-author]')){ e.preventDefault(); }
+  const go = e.target.closest('[data-go]'); if(go){ show(go.dataset.go); return; }
+  const nv = e.target.closest('nav button[data-view]'); if(nv){ show(nv.dataset.view); }
+});
+
+/* ---------- view switching (#overview, #pain, #bugs, #queue) ---------- */
+const VIEWS=['overview','pain','bugs','queue'];
+function show(v){
+  if(!VIEWS.includes(v)) v='overview';
+  VIEWS.forEach(k=>{ $('#v-'+k).hidden = k!==v; });
+  document.querySelectorAll('nav button[data-view]').forEach(b=>{ if(b.dataset.view===v) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
+  try{ history.replaceState(null,'','#'+v); }catch(_){}
+  window.scrollTo(0,0);
+}
+$('#n-pain').textContent = pains.length; $('#n-bugs').textContent = D.bugs.length;
+drawChart(); renderMix(); renderOverview(); renderPain(); renderBugs(); renderQueue();
+show((location.hash||'').slice(1));
+})();
+</script>

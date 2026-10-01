@@ -334,3 +334,36 @@ The Plan 4 eval harness scores Jev against `eval/gold.jsonl` alongside the LLM. 
 ### 14.6 Testing
 
 A `FakeClassifier` mirrors `FakeBackend`. Tests cover staff overrides, each escalation rule, Jev failure escalation, queue ordering by `needs_reply_p`, and budget accounting for per-request pricing. The Jev backend gets contract tests against recorded `systemone` responses (no network).
+
+## 15. Addendum (2026-10-01): dashboard decisions from the mockup review
+
+The approved mockup (`docs/design/dashboard-mockup.html`) is the visual spec for the dashboard: its palette, type, layout and the shared message card. The user approved it on 2026-10-01 and chose these additions.
+
+### 15.1 Reply-time stats (Plan 4)
+- For community messages with `needs_reply = 1` in the window: how many got a staff reply, the median minutes to the first staff reply, and how many are still unanswered after 24 hours.
+- A staff reply is the earliest `is_team` message after it that replies to it, is in the same thread, or is in the thread started from it (the same matching as the mod queue).
+- Shown as an Overview stat and per channel in the "Where it's coming from" table.
+
+### 15.2 Pain point status (Plan 4)
+- Each pain point (active root theme) has a status: Not triaged, Acknowledged, Fix in progress, Fix shipped, plus a free-text note. Set from the Pain points view; stored in `theme_status`.
+- A status set on a theme that later merges moves to the theme it merged into (newest update wins).
+- When marked shipped, the view compares the theme's volume and average sentiment in equal windows (up to 14 days each) before and after the ship time.
+
+### 15.3 Channel and window filters (Plan 4)
+- Every view takes `days` (7, 14, 30, 90; default 14) and `channel` (a top-level channel id, or all). Numbers, charts and lists are recomputed for the filter, and links keep it.
+- A channel filter includes that channel's threads. This needs `messages.parent_channel_id`, filled at ingest; rows imported before Plan 4 get it on the next re-import.
+- Pain point scores keep the spec's fixed 7-day window (section 6) within the selected channel.
+
+### 15.4 Overview additions
+- A "Where it's coming from" panel: the message-type mix for the window and a per-channel table (messages, average sentiment, negative share, needs reply, median reply time, waiting over 24h).
+- "Landing well": the most positive praise messages in the window.
+
+### 15.5 Implementation clarifications
+- Charts (sentiment line, volume bars, launch markers, sparklines) are drawn as server-side SVG instead of Chart.js, so pages need no chart library and tests can assert on them.
+- `python -m pulse.run web --demo` serves `demo.db` with a built-in demo config that needs no API keys and turns agent buttons off. `web` without `--demo` uses `pulse.toml` as usual.
+- Investigate and "Generate digest" run as FastAPI background tasks on their own database connection; the page polls with htmx until the result is stored.
+- Removed and missing citations are stored with each digest and investigation (`removed_citations`) so the Reports view can show them.
+
+### 15.6 Later (Plan 5 and beyond)
+- Plan 5: send a pain point to GitHub or Linear as an issue with its evidence links; Slack alerts for pain point spikes and frustrated users unanswered for more than 12 hours.
+- Later: a "community helpers" view of non-staff members who answer others' questions.
