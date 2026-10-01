@@ -23,6 +23,27 @@ def _like(text: str) -> str:
     return f"%{escaped}%"
 
 
+def scope_clause(channels: tuple[str, ...] | None) -> tuple[str, list]:
+    """SQL limiting messages `m` to the given top-level channels and their threads.
+
+    Returns ("", []) when unscoped. Rows imported before parent_channel_id existed count
+    under their own channel id until they are re-imported.
+    """
+    if not channels:
+        return "", []
+    marks = ",".join("?" * len(channels))
+    return f" AND (m.channel_id IN ({marks}) OR m.parent_channel_id IN ({marks}))", [*channels, *channels]
+
+
+def top_channels(conn: sqlite3.Connection) -> list[dict]:
+    """Top-level channels (not threads) that have messages, busiest first."""
+    rows = conn.execute(
+        "SELECT channel_id, MAX(channel_name) AS name, COUNT(*) AS n FROM messages"
+        " WHERE thread_id IS NULL GROUP BY channel_id ORDER BY n DESC, channel_id"
+    ).fetchall()
+    return [{"id": r["channel_id"], "name": r["name"] or r["channel_id"], "messages": r["n"]} for r in rows]
+
+
 def to_message(row: sqlite3.Row) -> dict:
     content = row["content"]
     return {
@@ -57,11 +78,14 @@ def theme_member_ids(conn: sqlite3.Connection, theme_id: int) -> list[int]:
     return sorted(tid for tid, r in resolved.items() if r == root)
 
 
-def period_summary(conn: sqlite3.Connection, start: datetime, end: datetime) -> dict:
+def period_summary(
+    conn: sqlite3.Connection, start: datetime, end: datetime, *, channels: tuple[str, ...] | None = None
+) -> dict:
+    scope, scope_params = scope_clause(channels)
     rows = conn.execute(
         "SELECT t.sentiment, t.kind, t.needs_reply FROM messages m JOIN triage t ON t.message_id = m.id"
-        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?",
-        (to_iso(start), to_iso(end)),
+        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?{scope}",
+        (to_iso(start), to_iso(end), *scope_params),
     ).fetchall()
     n = len(rows)
     by_kind = {k: 0 for k in KINDS}
@@ -78,12 +102,15 @@ def period_summary(conn: sqlite3.Connection, start: datetime, end: datetime) -> 
     }
 
 
-def sentiment_series(conn: sqlite3.Connection, start: datetime, end: datetime) -> list[dict]:
+def sentiment_series(
+    conn: sqlite3.Connection, start: datetime, end: datetime, *, channels: tuple[str, ...] | None = None
+) -> list[dict]:
+    scope, scope_params = scope_clause(channels)
     rows = conn.execute(
         "SELECT substr(m.created_at, 1, 10) AS day, COUNT(*) AS n, AVG(t.sentiment) AS avg"
         " FROM messages m JOIN triage t ON t.message_id = m.id"
-        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ? GROUP BY day",
-        (to_iso(start), to_iso(end)),
+        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?{scope} GROUP BY day",
+        (to_iso(start), to_iso(end), *scope_params),
     ).fetchall()
     by_day = {r["day"]: r for r in rows}
     out = []
@@ -121,6 +148,7 @@ def theme_scores(
     window_days: int = 7,
     limit: int = 20,
     start: datetime | None = None,
+    channels: tuple[str, ...] | None = None,
 ) -> list[ThemeScore]:
     """Active themes ranked by score = volume x mean negativity x (1 + positive trend).
 
@@ -134,12 +162,13 @@ def theme_scores(
     active = {
         r["id"]: r for r in conn.execute("SELECT id, name, description FROM themes WHERE status = 'active'")
     }
+    scope, scope_params = scope_clause(channels)
     rows = conn.execute(
         "SELECT mt.theme_id, m.id AS message_id, m.created_at, t.sentiment, t.kind"
         " FROM message_themes mt JOIN messages m ON m.id = mt.message_id"
         " JOIN triage t ON t.message_id = m.id"
-        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?",
-        (to_iso(prev_start), to_iso(now)),
+        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?{scope}",
+        (to_iso(prev_start), to_iso(now), *scope_params),
     ).fetchall()
     cur_iso = to_iso(cur_start)
     agg: dict[int, dict] = {}
@@ -199,6 +228,7 @@ def sample_messages(
     kinds: tuple[str, ...] | None = None,
     limit: int = 10,
     most_negative: bool = True,
+    channels: tuple[str, ...] | None = None,
 ) -> list[dict]:
     sql = f"SELECT DISTINCT {MESSAGE_COLUMNS} FROM messages m JOIN triage t ON t.message_id = m.id"
     params: list = []
@@ -210,6 +240,9 @@ def sample_messages(
         params += ids
     sql += f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?"
     params += [to_iso(start), to_iso(end)]
+    scope, scope_params = scope_clause(channels)
+    sql += scope
+    params += scope_params
     if kinds:
         sql += f" AND t.kind IN ({','.join('?' * len(kinds))})"
         params += list(kinds)

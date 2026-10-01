@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL,
     edited_at TEXT,
     reply_to_id TEXT,
-    source TEXT NOT NULL
+    source TEXT NOT NULL,
+    parent_channel_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id, created_at);
@@ -126,22 +127,26 @@ CREATE TABLE IF NOT EXISTS investigations (
 );
 """
 
-# Columns added after Plan 1. CREATE TABLE IF NOT EXISTS leaves an existing table
-# untouched, so databases created earlier get them via ALTER TABLE.
-_TRIAGE_ADDED_COLUMNS = (
-    ("needs_reply_p", "REAL"),
-    ("kind_confidence", "REAL"),
-    ("labeler", "TEXT NOT NULL DEFAULT 'llm'"),
-    ("themed_at", "TEXT"),
-)
+# Columns added after a table was first created. CREATE TABLE IF NOT EXISTS leaves an
+# existing table untouched, so databases created earlier get them via ALTER TABLE.
+_ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "triage": (
+        ("needs_reply_p", "REAL"),
+        ("kind_confidence", "REAL"),
+        ("labeler", "TEXT NOT NULL DEFAULT 'llm'"),
+        ("themed_at", "TEXT"),
+    ),
+    "messages": (("parent_channel_id", "TEXT"),),
+}
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    have = {r["name"] for r in conn.execute("PRAGMA table_info(triage)")}
     with conn:
-        for name, decl in _TRIAGE_ADDED_COLUMNS:
-            if name not in have:
-                conn.execute(f"ALTER TABLE triage ADD COLUMN {name} {decl}")
+        for table, columns in _ADDED_COLUMNS.items():
+            have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+            for name, decl in columns:
+                if name not in have:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
 
 def connect(path: str | Path) -> sqlite3.Connection:

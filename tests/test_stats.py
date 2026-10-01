@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -139,3 +140,68 @@ def test_like_escapes_wildcards():
     assert hits("100%") == ["a"]
     assert hits("a_b") == ["c"]
     assert hits("k\\s") == ["e"]
+
+
+NAMES = {"100": "help", "200": "general", "300": "M1 install thread"}
+
+
+def _m(id, channel, sentiment, *, minutes=0, thread=None, parent=None):
+    m = replace(
+        msg(id, f"text {id}", minutes=minutes, channel_id=channel, thread_id=thread),
+        channel_name=NAMES[channel], parent_channel_id=parent,
+    )
+    return m, sentiment
+
+
+def _channel_db():
+    conn = connect(":memory:")
+    rows = [
+        _m("h1", "100", -2, minutes=0),
+        _m("h2", "100", -1, minutes=1),
+        _m("t1", "300", -2, minutes=2, thread="300", parent="100"),
+        _m("g1", "200", 2, minutes=3),
+    ]
+    upsert_messages(conn, [m for m, _ in rows], frozenset())
+    for m, s in rows:
+        set_triage(conn, m.id, sentiment=s)
+    return conn
+
+
+START, END = T0 - timedelta(hours=1), T0 + timedelta(hours=1)
+
+
+def test_channel_scope_includes_threads_of_the_channel():
+    conn = _channel_db()
+    help_ = stats.period_summary(conn, START, END, channels=("100",))
+    assert help_["messages"] == 3 and help_["negative"] == 3
+    assert stats.period_summary(conn, START, END, channels=("200",))["messages"] == 1
+    assert stats.period_summary(conn, START, END)["messages"] == 4
+
+
+def test_series_and_samples_respect_channel_scope():
+    conn = _channel_db()
+    day = T0.replace(hour=0)
+    series = stats.sentiment_series(conn, day, day + timedelta(days=1), channels=("200",))
+    assert series == [{"day": "2026-09-28", "messages": 1, "avg_sentiment": 2.0}]
+    ids = {m["message_id"] for m in stats.sample_messages(conn, START, END, channels=("100",), limit=10)}
+    assert ids == {"h1", "h2", "t1"}
+
+
+def test_theme_scores_respect_channel_scope():
+    conn = _channel_db()
+    with conn:
+        conn.execute("INSERT INTO themes (id, name, created_at) VALUES (1, 'install', ?)", (to_iso(T0),))
+        for mid in ("h1", "t1", "g1"):
+            conn.execute("INSERT INTO message_themes (message_id, theme_id) VALUES (?, 1)", (mid,))
+    now = T0 + timedelta(hours=1)
+    assert stats.theme_scores(conn, now, channels=("100",))[0].volume == 2
+    assert stats.theme_scores(conn, now, channels=("200",))[0].volume == 1
+    assert stats.theme_scores(conn, now)[0].volume == 3
+
+
+def test_top_channels_lists_top_level_channels_busiest_first():
+    conn = _channel_db()
+    assert stats.top_channels(conn) == [
+        {"id": "100", "name": "help", "messages": 2},
+        {"id": "200", "name": "general", "messages": 1},
+    ]

@@ -115,3 +115,25 @@ def test_old_db_gains_themed_at(tmp_path):
     conn = connect(path)
     assert "themed_at" in triage_columns(conn)
     assert conn.execute("SELECT themed_at FROM triage WHERE message_id = 'm'").fetchone()[0] is None
+
+
+def test_old_messages_table_gains_parent_channel_id(tmp_path):
+    path = tmp_path / "old.db"
+    raw = sqlite3.connect(path)
+    raw.executescript(
+        "CREATE TABLE messages (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL,"
+        " channel_name TEXT NOT NULL DEFAULT '', thread_id TEXT, author_id TEXT NOT NULL,"
+        " author_name TEXT NOT NULL, author_avatar_url TEXT, is_team INTEGER NOT NULL DEFAULT 0,"
+        " is_bot INTEGER NOT NULL DEFAULT 0, content TEXT NOT NULL, created_at TEXT NOT NULL,"
+        " edited_at TEXT, reply_to_id TEXT, source TEXT NOT NULL);"
+        "INSERT INTO messages (id, guild_id, channel_id, author_id, author_name, content, created_at, source)"
+        " VALUES ('m1', '900', '100', 'u1', 'alice', 'hi', '2026-09-28T12:00:00.000000Z', 'file');"
+    )
+    raw.commit()
+    raw.close()
+    conn = connect(path)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}
+    assert "parent_channel_id" in cols
+    assert conn.execute("SELECT parent_channel_id FROM messages WHERE id = 'm1'").fetchone()[0] is None
+    conn.close()
+    connect(path).close()  # migrating twice is a no-op

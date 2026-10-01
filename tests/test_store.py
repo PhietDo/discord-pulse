@@ -64,3 +64,10 @@ def test_sync_launches_upserts_by_name():
     assert set(rows) == {"v2.0 SDK", "CLI 3"}
     assert rows["v2.0 SDK"]["date"] == "2026-09-16"
     assert json.loads(rows["v2.0 SDK"]["keywords"]) == ["v2"]
+
+
+def test_upsert_stores_parent_channel_id():
+    conn = connect(":memory:")
+    m = replace(msg("t1", channel_id="300", thread_id="300"), parent_channel_id="100")
+    upsert_messages(conn, [m], frozenset())
+    assert conn.execute("SELECT parent_channel_id FROM messages WHERE id = 't1'").fetchone()[0] == "100"
