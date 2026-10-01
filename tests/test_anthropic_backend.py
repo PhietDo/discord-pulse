@@ -90,3 +90,50 @@ def test_auth_error_is_provider_error():
     err = anthropic.AuthenticationError("bad key", response=httpx.Response(401, request=REQ), body=None)
     with pytest.raises(ProviderError):
         backend_for(err)[0].complete("m", "sys", "hi", SCHEMA, "answer_result")
+
+
+from pulse.agents.base import StepResult, ToolCall, ToolSpec
+
+TOOLS = [ToolSpec("search_messages", "Find messages.", {"type": "object", "properties": {"text": {"type": "string"}}})]
+TRANSCRIPT = [
+    {"role": "user", "content": "why?"},
+    {"role": "assistant", "text": "looking", "tool_calls": [ToolCall("tu1", "search_messages", {"text": "auth"})]},
+    {"role": "tool", "results": [{"id": "tu1", "content": "[3 messages]"}], "note": "answer now"},
+]
+
+
+def test_tool_step_translates_transcript_and_parses_tool_use():
+    resp = response([
+        SimpleNamespace(type="text", text="Let me check threads."),
+        SimpleNamespace(type="tool_use", id="tu2", name="search_messages", input={"text": "token"}),
+    ])
+    backend, messages = backend_for(resp)
+    result = backend.tool_step("claude-sonnet-5", "sys", TRANSCRIPT, TOOLS)
+    assert result == StepResult("Let me check threads.", (ToolCall("tu2", "search_messages", {"text": "token"}),), 150, 20, 900)
+    kw = messages.kwargs
+    assert kw["tools"] == [{"name": "search_messages", "description": "Find messages.", "input_schema": TOOLS[0].parameters}]
+    assert kw["tool_choice"] == {"type": "auto"}
+    assert kw["messages"] == [
+        {"role": "user", "content": "why?"},
+        {"role": "assistant", "content": [
+            {"type": "text", "text": "looking"},
+            {"type": "tool_use", "id": "tu1", "name": "search_messages", "input": {"text": "auth"}},
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "tu1", "content": "[3 messages]"},
+            {"type": "text", "text": "answer now"},
+        ]},
+    ]
+
+
+def test_tool_step_final_answer_with_tools_disabled():
+    backend, messages = backend_for(response([SimpleNamespace(type="text", text="Final.")]))
+    result = backend.tool_step("m", "sys", TRANSCRIPT[:1], TOOLS, allow_tools=False)
+    assert (result.text, result.tool_calls) == ("Final.", ())
+    assert messages.kwargs["tool_choice"] == {"type": "none"}
+
+
+def test_tool_step_maps_errors_like_complete():
+    err = anthropic.RateLimitError("slow", response=httpx.Response(429, request=REQ), body=None)
+    with pytest.raises(TransientError):
+        backend_for(err)[0].tool_step("m", "sys", TRANSCRIPT[:1], TOOLS)

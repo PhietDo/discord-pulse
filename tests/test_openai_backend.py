@@ -140,3 +140,59 @@ def test_json_array_is_output_invalid():
     backend, _ = backend_for(response(content="[1, 2]"))
     with pytest.raises(OutputInvalid):
         backend.complete("gpt-x", "sys", "hi", SCHEMA, "answer_result")
+
+
+from pulse.agents.base import StepResult, ToolCall, ToolSpec
+
+TOOLS = [ToolSpec("get_thread", "Get a thread.", {"type": "object", "properties": {"message_id": {"type": "string"}}})]
+TRANSCRIPT = [
+    {"role": "user", "content": "why?"},
+    {"role": "assistant", "text": None, "tool_calls": [ToolCall("c1", "get_thread", {"message_id": "m1"})]},
+    {"role": "tool", "results": [{"id": "c1", "content": "[thread]"}], "note": "answer now"},
+]
+
+
+def tool_response(content=None, calls=(), cost=None):
+    message = SimpleNamespace(content=content, refusal=None, tool_calls=[
+        SimpleNamespace(id=cid, type="function", function=SimpleNamespace(name=name, arguments=args))
+        for cid, name, args in calls
+    ] or None)
+    usage = SimpleNamespace(prompt_tokens=1000, completion_tokens=50,
+                            prompt_tokens_details=SimpleNamespace(cached_tokens=800))
+    if cost is not None:
+        usage.cost = cost
+    return SimpleNamespace(choices=[SimpleNamespace(message=message)], usage=usage)
+
+
+def test_tool_step_translates_transcript_and_parses_calls():
+    backend, completions = backend_for(tool_response(calls=[("c2", "get_thread", '{"message_id": "m2"}')]))
+    result = backend.tool_step("gpt-x", "sys", TRANSCRIPT, TOOLS)
+    assert result == StepResult(None, (ToolCall("c2", "get_thread", {"message_id": "m2"}),), 200, 50, 800, None)
+    kw = completions.calls[0]
+    assert kw["tools"] == [{"type": "function", "function": {"name": "get_thread", "description": "Get a thread.", "parameters": TOOLS[0].parameters}}]
+    assert kw["tool_choice"] == "auto"
+    assert kw["messages"] == [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "why?"},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "c1", "type": "function", "function": {"name": "get_thread", "arguments": '{"message_id": "m1"}'}},
+        ]},
+        {"role": "tool", "tool_call_id": "c1", "content": "[thread]"},
+        {"role": "user", "content": "answer now"},
+    ]
+    assert "response_format" not in kw
+
+
+def test_tool_step_final_answer_with_tools_disabled_and_openrouter_cost():
+    backend, completions = backend_for(tool_response(content="Final.", cost=0.003), openrouter=True)
+    result = backend.tool_step("m", "sys", TRANSCRIPT[:1], TOOLS, allow_tools=False)
+    assert (result.text, result.tool_calls, result.reported_cost) == ("Final.", (), 0.003)
+    assert completions.calls[0]["tool_choice"] == "none"
+    assert completions.calls[0]["extra_body"] == {"usage": {"include": True}}
+
+
+def test_tool_step_bad_arguments_are_output_invalid():
+    backend, _ = backend_for(tool_response(calls=[("c2", "get_thread", "{not json")]))
+    with pytest.raises(OutputInvalid) as exc:
+        backend.tool_step("gpt-x", "sys", TRANSCRIPT[:1], TOOLS)
+    assert exc.value.output_tokens == 50
