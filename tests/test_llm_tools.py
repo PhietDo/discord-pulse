@@ -93,3 +93,29 @@ def test_budget_cap_blocks_the_run():
         llm.run_tools("investigate", "sys", "q", TOOLS, lambda c: "")
     assert backend.step_calls == []
     assert runs(conn)[0]["status"] == "skipped_budget"
+
+
+def test_unexpected_tool_exception_records_failed_run_and_reraises():
+    def boom(call):
+        raise KeyError("boom")
+
+    backend = FakeBackend(steps=[step(None, ToolCall("c1", "lookup", {}))])
+    conn, llm, _ = run(backend)
+    with pytest.raises(KeyError):
+        llm.run_tools("investigate", "sys", "q", TOOLS, boom)
+    [row] = runs(conn)
+    assert row["status"] == "failed"
+    assert "KeyError" in row["error"]
+    assert row["cost_usd"] == pytest.approx((100 * 1.0 + 20 * 5.0) / 1_000_000)
+
+
+def test_budget_cap_reached_mid_loop_stops_and_records():
+    first_step_cost = (100 * 1.0 + 20 * 5.0) / 1_000_000
+    backend = FakeBackend(steps=[step(None, ToolCall("c1", "lookup", {}))])
+    conn, llm, _ = run(backend, daily_usd_cap=first_step_cost)
+    with pytest.raises(BudgetExceeded):
+        llm.run_tools("investigate", "sys", "q", TOOLS, lambda c: "x")
+    assert len(backend.step_calls) == 1
+    [row] = runs(conn)
+    assert row["status"] == "failed"
+    assert row["cost_usd"] == pytest.approx(first_step_cost)

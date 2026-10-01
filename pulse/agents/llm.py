@@ -279,6 +279,12 @@ class LLMClient:
                     content = execute(call)
                 except ToolError as e:
                     content = f"error: {e}"
+                except Exception as e:
+                    self._record(
+                        agent, ref, started, "failed",
+                        f"tool {call.name} raised {type(e).__name__}: {e}", usage,
+                    )
+                    raise
                 results.append({"id": call.id, "content": content})
             turn: dict = {"role": "tool", "results": results}
             if calls >= max_calls:
