@@ -5,13 +5,18 @@ import argparse
 import sys
 from datetime import date, datetime, timezone
 
+from pulse.agents.base import BudgetExceeded, LLMError
+from pulse.agents.digest import run_digest
+from pulse.agents.investigate import run_investigation
 from pulse.agents.triage import run_triage
+from pulse.agents.theme import run_themes
 from pulse.config import ConfigError, load_config
 from pulse.db import connect
 from pulse.modqueue import list_open, refresh_mod_queue
 from pulse.pipeline import (
-    build_llm, format_ingest, format_modqueue, format_queue, format_report, format_triage, ingest, run_pipeline,
+    build_llm, format_digest, format_ingest, format_investigation, format_modqueue, format_queue, format_report, format_themes, format_triage, ingest, run_pipeline,
 )
+from pulse.store import sync_launches
 from pulse.sources.file_source import FileSource
 
 
@@ -27,6 +32,12 @@ def _parser() -> argparse.ArgumentParser:
     queue = sub.add_parser("queue", help="list open mod queue items, highest priority first")
     queue.add_argument("--limit", type=int, default=20)
     sub.add_parser("pipeline", help="ingest, triage, then refresh the mod queue")
+    sub.add_parser("themes", help="group labelled messages into recurring themes")
+    digest = sub.add_parser("digest", help="write the weekly digest, or a launch digest with --launch")
+    digest.add_argument("--launch", help="launch name from [[launches]] in pulse.toml")
+    investigate = sub.add_parser("investigate", help="ask the Investigate agent a question")
+    investigate.add_argument("question")
+    investigate.add_argument("--theme", type=int, help="theme id to focus on")
     return parser
 
 
@@ -42,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     config.db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = connect(config.db_path)
+    sync_launches(conn, config.launches)
     now = datetime.now(timezone.utc)
 
     if args.command == "ingest":
@@ -56,6 +68,26 @@ def main(argv: list[str] | None = None) -> int:
         print(format_queue(list_open(conn, args.limit), now))
     elif args.command == "pipeline":
         print(format_report(run_pipeline(conn, config, build_llm(conn, config), now=now)))
+    elif args.command == "themes":
+        print(format_themes(run_themes(conn, build_llm(conn, config), now)))
+    elif args.command == "digest":
+        try:
+            result = run_digest(conn, build_llm(conn, config), now, launch=args.launch)
+        except LookupError as e:
+            print(f"digest: {e.args[0]}", file=sys.stderr)
+            return 1
+        except (BudgetExceeded, LLMError) as e:
+            print(f"digest failed: {e}", file=sys.stderr)
+            return 1
+        print(format_digest(result, conn))
+    elif args.command == "investigate":
+        context = {"theme_id": args.theme} if args.theme is not None else None
+        try:
+            result = run_investigation(conn, build_llm(conn, config), args.question, now, context=context)
+        except (BudgetExceeded, LLMError, ValueError) as e:
+            print(f"investigation failed: {e}", file=sys.stderr)
+            return 1
+        print(format_investigation(result, conn))
     return 0
 
 

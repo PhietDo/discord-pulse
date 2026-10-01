@@ -6,15 +6,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from pulse.agents.base import Backend
+from pulse.agents.digest import DigestResult
+from pulse.agents.investigate import InvestigationResult
 from pulse.agents.llm import LLMClient
+from pulse.agents.theme import ThemeStats, run_themes
 from pulse.agents.triage import TriageStats, run_triage
+from pulse.citations import render_text
 from pulse.config import Config
 from pulse.links import jump_link
 from pulse.models import from_iso
 from pulse.modqueue import ModQueueStats, refresh_mod_queue
 from pulse.sources.base import Source
 from pulse.sources.file_source import FileSource
-from pulse.store import UpsertStats, upsert_messages
+from pulse.store import UpsertStats, upsert_messages, sync_launches
 
 
 def build_backends(config: Config) -> dict[str, Backend]:
@@ -61,6 +65,7 @@ class PipelineReport:
     ingest_errors: list[str]
     triage: TriageStats
     modqueue: ModQueueStats
+    themes: ThemeStats | None = None
 
 
 def run_pipeline(
@@ -74,9 +79,11 @@ def run_pipeline(
     source = source if source is not None else FileSource(config.imports_dir)
     now = now if now is not None else datetime.now(timezone.utc)
     ingest_stats, errors = ingest(conn, config, source)
+    sync_launches(conn, config.launches)
     triage_stats = run_triage(conn, llm)
+    theme_stats = run_themes(conn, llm, now)
     queue_stats = refresh_mod_queue(conn, config, now)
-    return PipelineReport(ingest_stats, errors, triage_stats, queue_stats)
+    return PipelineReport(ingest_stats, errors, triage_stats, queue_stats, themes=theme_stats)
 
 
 def format_ingest(stats: UpsertStats, errors: list[str]) -> str:
@@ -105,12 +112,41 @@ def format_modqueue(stats: ModQueueStats) -> str:
     return f"mod queue: opened {stats.opened}, updated {stats.updated}, auto-closed {stats.auto_closed}"
 
 
+def format_themes(stats: ThemeStats) -> str:
+    lines = [
+        f"themes: considered {stats.considered}, jev assigned {stats.jev_assigned},"
+        f" llm batches {stats.llm_batches} (failed {stats.failed_batches}), new themes {stats.created},"
+        f" assignments {stats.assigned}, merges {stats.merged}, renames {stats.renamed}"
+    ]
+    lines += [f"  rejected: {r}" for r in stats.rejected]
+    if stats.skipped_budget:
+        lines.append("  daily budget cap reached: remaining messages will be themed on the next run")
+    return "\n".join(lines)
+
+
+def _removed_note(removed: list[str]) -> str:
+    return f"\n\n(removed {len(removed)} citation(s) to messages the agent was not shown)" if removed else ""
+
+
+def format_digest(result: DigestResult, conn: sqlite3.Connection) -> str:
+    header = f"digest #{result.digest_id} ({result.kind}, {result.period_start[:10]} to {result.period_end[:10]})"
+    return f"{header}\n\n{render_text(result.markdown, conn)}{_removed_note(result.removed_citations)}"
+
+
+def format_investigation(result: InvestigationResult, conn: sqlite3.Connection) -> str:
+    header = f"investigation #{result.investigation_id} ({result.tool_calls} tool calls)"
+    return f"{header}\n\n{render_text(result.markdown, conn)}{_removed_note(result.removed_citations)}"
+
+
 def format_report(report: PipelineReport) -> str:
-    return "\n".join([
+    lines = [
         format_ingest(report.ingest, report.ingest_errors),
         format_triage(report.triage),
-        format_modqueue(report.modqueue),
-    ])
+    ]
+    if report.themes is not None:
+        lines.append(format_themes(report.themes))
+    lines.append(format_modqueue(report.modqueue))
+    return "\n".join(lines)
 
 
 def format_queue(items, now: datetime) -> str:

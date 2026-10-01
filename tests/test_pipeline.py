@@ -4,10 +4,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pulse.agents.base import BackendResult
+from pulse.agents.digest import DigestResult
+from pulse.agents.investigate import InvestigationResult
+from pulse.agents.theme import ThemeStats
 from pulse.agents.triage import TriageStats
 from pulse.db import connect
 from pulse.modqueue import ModQueueStats
-from pulse.pipeline import PipelineReport, format_report, format_triage, ingest, run_pipeline, build_llm
+from pulse.pipeline import PipelineReport, format_report, format_triage, ingest, run_pipeline, build_llm, format_digest, format_investigation, format_themes
 from pulse.sources.file_source import FileSource
 from pulse.store import UpsertStats
 from tests.fakes import FakeBackend, make_config, make_llm, classifier_config
@@ -136,3 +139,46 @@ def test_format_triage_shows_left_untriaged_instead_of_skipped_batches():
     text = format_triage(TriageStats(triaged=2, skipped_budget_batches=1, left_untriaged=5))
     assert "daily budget cap reached: 5 messages left untriaged for the next run" in text
     assert "batches skipped" not in text
+
+
+def label_or_theme(user):
+    data = json.loads(user)
+    if "themes" in data:
+        ids = [m["message_id"] for m in data["messages"]]
+        return BackendResult({"assignments": [], "merges": [], "renames": [],
+                              "new_themes": [{"name": "Install", "description": "d", "message_ids": ids}]}, 10, 10)
+    return label(user)
+
+
+def test_pipeline_themes_triaged_messages(tmp_path):
+    for name in ("dce_channel.json", "dce_thread.json", "messages.csv"):
+        shutil.copy(FIXTURES / name, tmp_path / name)
+    conn = connect(":memory:")
+    config = make_config(imports_dir=tmp_path)
+    report = run_pipeline(conn, config, make_llm(conn, config, FakeBackend(handler=label_or_theme)),
+                          source=FileSource(tmp_path), now=datetime(2026, 9, 22, 12, 0, tzinfo=timezone.utc))
+    assert report.themes.created == 1
+    assert report.themes.assigned == report.themes.considered > 0
+    assert "themes:" in format_report(report)
+
+
+def test_format_themes_lists_rejections_and_budget():
+    text = format_themes(ThemeStats(considered=5, jev_assigned=2, llm_batches=1, created=1, assigned=3,
+                                    rejected=["merge 1->2: both themes must be active and different"],
+                                    skipped_budget=True))
+    assert "considered 5" in text and "jev assigned 2" in text and "new themes 1" in text
+    assert "rejected: merge 1->2" in text
+    assert "daily budget cap reached" in text
+
+
+def test_format_digest_and_investigation_render_citations():
+    conn = connect(":memory:")
+    upsert_messages(conn, [msg("m1", "hi", author_name="alice")], frozenset())
+    digest = DigestResult(7, "weekly", "2026-09-21T00:00:00.000000Z", "2026-09-28T00:00:00.000000Z",
+                          "Good [[msg:m1]].", ["m1"], ["ghost"])
+    text = format_digest(digest, conn)
+    assert text.startswith("digest #7 (weekly")
+    assert "(alice, https://discord.com/channels/900/100/m1)" in text
+    assert "removed 1 citation" in text
+    inv = InvestigationResult(3, "Because [[msg:m1]].", ["m1"], [], 2)
+    assert "investigation #3 (2 tool calls)" in format_investigation(inv, conn)

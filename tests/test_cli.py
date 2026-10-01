@@ -82,3 +82,25 @@ def test_queue_command_lists_open_items(tmp_path, monkeypatch, capsys):
     assert "[frustrated" in out
     assert "erin in #help" in out
     assert "https://discord.com/channels/900/100/f1" in out
+
+LAUNCH_CONFIG = CONFIG + '''
+[[launches]]
+name = "v2.0 SDK"
+date = "2026-09-15"
+keywords = ["v2"]
+'''
+
+
+def test_commands_sync_launches_and_themes_runs_with_nothing_to_do(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    (tmp_path / "pulse.toml").write_text(LAUNCH_CONFIG)
+    assert main(["--config", str(tmp_path / "pulse.toml"), "themes"]) == 0
+    assert "themes: considered 0" in capsys.readouterr().out
+    assert connect(tmp_path / "pulse.db").execute("SELECT name FROM launches").fetchone()[0] == "v2.0 SDK"
+
+
+def test_digest_unknown_launch_exits_1(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    (tmp_path / "pulse.toml").write_text(LAUNCH_CONFIG)
+    assert main(["--config", str(tmp_path / "pulse.toml"), "digest", "--launch", "nope"]) == 1
+    assert "unknown launch 'nope'" in capsys.readouterr().err

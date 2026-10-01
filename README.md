@@ -48,6 +48,17 @@ List the mod queue, highest priority first, with links to each message:
 .venv/bin/python -m pulse.run queue --limit 20
 ```
 
+## Themes, digests, investigations
+
+```bash
+.venv/bin/python -m pulse.run themes                         # group labelled messages into pain points
+.venv/bin/python -m pulse.run digest                         # weekly digest
+.venv/bin/python -m pulse.run digest --launch "v2.0 SDK"     # before/after a [[launches]] entry
+.venv/bin/python -m pulse.run investigate "why did sentiment dip on Tuesday?"
+```
+
+`pipeline` now also runs `themes`. Themes are proposed by the `theme` model (with Jev assigning messages to existing themes when the classifier is enabled); a run creates at most 5 new themes and 3 merges, and every change is logged. Digests and investigations cite real messages; the CLI prints each citation as the author and a link to the message, and drops any citation to a message the agent was not shown.
+
 ## Tests
 
 ```bash
