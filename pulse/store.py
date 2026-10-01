@@ -1,10 +1,12 @@
 """Idempotent persistence of ingested messages."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from typing import Iterable
 
+from pulse.config import Launch
 from pulse.models import Message, to_iso
 
 _COLUMNS = (
@@ -55,3 +57,17 @@ def upsert_messages(
             else:
                 stats.unchanged += 1
     return stats
+
+
+def sync_launches(conn: sqlite3.Connection, launches: Iterable[Launch]) -> int:
+    """Mirror [[launches]] from the config into the launches table, keyed by name."""
+    count = 0
+    with conn:
+        for launch in launches:
+            conn.execute(
+                "INSERT INTO launches (name, date, keywords) VALUES (?, ?, ?)"
+                " ON CONFLICT(name) DO UPDATE SET date = excluded.date, keywords = excluded.keywords",
+                (launch.name, launch.date, json.dumps(list(launch.keywords))),
+            )
+            count += 1
+    return count

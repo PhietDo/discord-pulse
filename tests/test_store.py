@@ -52,3 +52,19 @@ def test_stores_optional_fields():
     assert (row["thread_id"], row["reply_to_id"], row["is_bot"], row["author_avatar_url"]) == (
         "300", "m0", 1, "https://x/a.png"
     )
+
+
+import json
+
+from pulse.config import Launch
+from pulse.store import sync_launches
+
+
+def test_sync_launches_upserts_by_name():
+    conn = connect(":memory:")
+    assert sync_launches(conn, [Launch("v2.0 SDK", "2026-09-15", ("v2", "migration"))]) == 1
+    sync_launches(conn, [Launch("v2.0 SDK", "2026-09-16", ("v2",)), Launch("CLI 3", "2026-10-01", ())])
+    rows = {r["name"]: r for r in conn.execute("SELECT * FROM launches")}
+    assert set(rows) == {"v2.0 SDK", "CLI 3"}
+    assert rows["v2.0 SDK"]["date"] == "2026-09-16"
+    assert json.loads(rows["v2.0 SDK"]["keywords"]) == ["v2"]

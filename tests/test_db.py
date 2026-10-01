@@ -100,3 +100,18 @@ def test_migration_is_idempotent(tmp_path):
     connect(path).close()
     connect(path).close()
     assert "labeler" in triage_columns(connect(path))
+
+
+def test_triage_has_themed_at_column():
+    assert "themed_at" in triage_columns(connect(":memory:"))
+
+
+def test_old_db_gains_themed_at(tmp_path):
+    path = tmp_path / "old.db"
+    raw = sqlite3.connect(path)
+    raw.executescript(OLD_SCHEMA)
+    raw.commit()
+    raw.close()
+    conn = connect(path)
+    assert "themed_at" in triage_columns(conn)
+    assert conn.execute("SELECT themed_at FROM triage WHERE message_id = 'm'").fetchone()[0] is None

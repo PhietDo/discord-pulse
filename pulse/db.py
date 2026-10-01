@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS triage (
     created_at TEXT NOT NULL,
     needs_reply_p REAL,
     kind_confidence REAL,
-    labeler TEXT NOT NULL DEFAULT 'llm'
+    labeler TEXT NOT NULL DEFAULT 'llm',
+    themed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS themes (
@@ -72,6 +73,7 @@ CREATE TABLE IF NOT EXISTS message_themes (
     theme_id INTEGER NOT NULL REFERENCES themes(id),
     PRIMARY KEY (message_id, theme_id)
 );
+CREATE INDEX IF NOT EXISTS idx_message_themes_theme ON message_themes(theme_id);
 
 CREATE TABLE IF NOT EXISTS theme_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,6 +132,7 @@ _TRIAGE_ADDED_COLUMNS = (
     ("needs_reply_p", "REAL"),
     ("kind_confidence", "REAL"),
     ("labeler", "TEXT NOT NULL DEFAULT 'llm'"),
+    ("themed_at", "TEXT"),
 )
 
 
