@@ -120,3 +120,28 @@ def test_empty_question_is_rejected():
     conn, _ = seed()
     with pytest.raises(ValueError):
         run_investigation(conn, make_llm(conn, make_config(), FakeBackend()), "  ", NOW)
+
+
+def test_search_excludes_staff_messages():
+    conn, tid = seed()
+    # Add a team-member message that matches the search (t1 is a team member per make_config)
+    upsert_messages(conn, [
+        msg("s1", "Auth is broken for us too", minutes=7, author_id="t1", author_name="staff"),
+    ], frozenset({"t1"}))
+    set_triage(conn, "s1", sentiment=-1, kind="docs", topics=["auth docs"])
+    box = Toolbox(conn, NOW)
+    found = json.loads(box.execute(call("search_messages", text="auth")))
+    # Should return t1, r1, q1 but NOT s1 (staff message)
+    assert [m["message_id"] for m in found] == ["t1", "r1", "q1"]
+    # s1 should not be in seen set
+    assert "s1" not in box.seen
+    assert box.seen == {"q1", "r1", "t1"}
+
+
+def test_unexpected_error_marks_investigation_failed_and_reraises():
+    conn, _ = seed()
+    backend = FakeBackend(step_handler=lambda transcript, allow: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError):
+        run_investigation(conn, make_llm(conn, make_config(), backend), "why?", NOW)
+    row = conn.execute("SELECT * FROM investigations").fetchone()
+    assert row["markdown"].startswith("Investigation failed: RuntimeError:")

@@ -136,7 +136,7 @@ class Toolbox:
                 return []
             sql += f" JOIN message_themes mt ON mt.message_id = m.id AND mt.theme_id IN ({','.join('?' * len(ids))})"
             params += ids
-        sql += " WHERE m.is_bot = 0 AND m.created_at >= ? AND m.created_at < ?"
+        sql += " WHERE m.is_team = 0 AND m.is_bot = 0 AND m.created_at >= ? AND m.created_at < ?"
         params += [to_iso(start), to_iso(end)]
         if args.get("text"):
             sql += " AND lower(m.content) LIKE ?"
@@ -216,6 +216,13 @@ def run_investigation(
         with conn:
             conn.execute(
                 "UPDATE investigations SET markdown = ? WHERE id = ?", (f"_Investigation failed: {e}_", inv_id)
+            )
+        raise
+    except Exception as e:
+        with conn:
+            conn.execute(
+                "UPDATE investigations SET markdown = ? WHERE id = ?",
+                (f"Investigation failed: {type(e).__name__}: {e}", inv_id),
             )
         raise
     markdown, removed = strip_unknown(resp.text, toolbox.seen)
