@@ -17,6 +17,12 @@ MESSAGE_COLUMNS = (
 _COMMUNITY = "m.is_team = 0 AND m.is_bot = 0"
 
 
+def _like(text: str) -> str:
+    """A LIKE pattern matching text as a literal substring. Use with ESCAPE '\\'."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def to_message(row: sqlite3.Row) -> dict:
     content = row["content"]
     return {
@@ -109,10 +115,21 @@ class ThemeScore:
 
 
 def theme_scores(
-    conn: sqlite3.Connection, now: datetime, *, window_days: int = 7, limit: int = 20
+    conn: sqlite3.Connection,
+    now: datetime,
+    *,
+    window_days: int = 7,
+    limit: int = 20,
+    start: datetime | None = None,
 ) -> list[ThemeScore]:
-    cur_start = now - timedelta(days=window_days)
-    prev_start = cur_start - timedelta(days=window_days)
+    """Active themes ranked by score = volume x mean negativity x (1 + positive trend).
+
+    The current window is [now - window_days, now), or [start, now) when start is given
+    (window_days is then ignored); the previous window is the equal-length span just before
+    it. Ties are broken by higher volume, then lower theme id.
+    """
+    cur_start = start if start is not None else now - timedelta(days=window_days)
+    prev_start = cur_start - (now - cur_start)
     resolved = theme_resolution(conn)
     active = {
         r["id"]: r for r in conn.execute("SELECT id, name, description FROM themes WHERE status = 'active'")

@@ -113,3 +113,29 @@ def test_sample_messages_order_and_filters():
     first = stats.sample_messages(conn, start, end, limit=1)[0]
     assert set(first) == {"message_id", "author", "channel", "created_at", "kind", "sentiment", "content"}
     assert stats.sample_messages(conn, start, end, theme_id=999) == []
+
+
+def test_theme_scores_with_explicit_start_uses_equal_previous_window():
+    conn = db(
+        (msg("cur", minutes=0), -1, "bug"),
+        (msg("prev", minutes=-2 * DAY), -1, "bug"),
+        (msg("older", minutes=-5 * DAY), -1, "bug"),
+    )
+    theme(conn, "Install", "cur", "prev", "older")
+    start = T0 - timedelta(hours=12)
+    [s] = stats.theme_scores(conn, start + timedelta(days=3), start=start, window_days=99)
+    assert (s.volume, s.prev_volume) == (1, 1)
+
+
+def test_like_escapes_wildcards():
+    conn = db((msg("a", "100% done"), 0, "other"), (msg("b", "1000 done"), 0, "other"), (msg("c", "a_b"), 0, "other"),
+              (msg("d", "axb"), 0, "other"), (msg("e", r"back\slash"), 0, "other"))
+
+    def hits(text):
+        return [r[0] for r in conn.execute(
+            "SELECT id FROM messages WHERE lower(content) LIKE ? ESCAPE '\\' ORDER BY id", (stats._like(text),)
+        )]
+
+    assert hits("100%") == ["a"]
+    assert hits("a_b") == ["c"]
+    assert hits("k\\s") == ["e"]
