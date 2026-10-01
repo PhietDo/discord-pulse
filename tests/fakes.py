@@ -23,7 +23,6 @@ def msg(
     author_name: str = "alice",
     reply_to_id: str | None = None,
     is_bot: bool = False,
-    is_team: bool = False,
 ) -> Message:
     return Message(
         id=id,
@@ -37,7 +36,6 @@ def msg(
         thread_id=thread_id,
         reply_to_id=reply_to_id,
         is_bot=is_bot,
-        is_team=is_team,
     )
 
 

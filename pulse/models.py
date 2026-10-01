@@ -39,7 +39,6 @@ class Message:
     thread_id: str | None = None
     author_avatar_url: str | None = None
     is_bot: bool = False
-    is_team: bool = False
     edited_at: datetime | None = None
     reply_to_id: str | None = None
     source: str = "file"
