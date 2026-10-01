@@ -7,7 +7,7 @@ from dataclasses import replace
 import httpx
 
 from pulse.agents.base import OutputInvalid, ProviderError, TransientError
-from pulse.agents.classifier import JEV_QUESTIONS, ClassifierResult, parse_answers
+from pulse.agents.classifier import JEV_QUESTIONS, ChoiceResult, ClassifierResult, parse_answers, parse_choice
 
 SYSTEMONE_URL = "https://openrouter.ai/api/v1/systemone"
 
@@ -25,11 +25,11 @@ class JevBackend:
         self._api_key = api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")
         self._url = url
 
-    def classify(self, model: str, state: dict) -> ClassifierResult:
+    def _post(self, model: str, state: dict, questions: dict) -> tuple[dict, float | None]:
         try:
             resp = self._client.post(
                 self._url,
-                json={"model": model, "state": state, "questions": JEV_QUESTIONS},
+                json={"model": model, "state": state, "questions": questions},
                 headers={"Authorization": f"Bearer {self._api_key}"},
             )
         except httpx.TransportError as e:
@@ -44,15 +44,25 @@ class JevBackend:
             raise OutputInvalid(f"not JSON: {e}") from e
         reported: float | None = None
         usage = data.get("usage") if isinstance(data, dict) else None
-        if isinstance(usage, dict):
-            cost = usage.get("cost")
-            if cost is not None:
-                try:
-                    reported = float(cost)
-                except (TypeError, ValueError):
-                    reported = None
+        if isinstance(usage, dict) and usage.get("cost") is not None:
+            try:
+                reported = float(usage["cost"])
+            except (TypeError, ValueError):
+                reported = None
+        return data, reported
+
+    def classify(self, model: str, state: dict) -> ClassifierResult:
+        data, reported = self._post(model, state, JEV_QUESTIONS)
         try:
             result = parse_answers(data)
         except (KeyError, TypeError, ValueError, AttributeError) as e:
             raise OutputInvalid(f"unexpected answers: {e!r}", reported_cost=reported) from e
+        return replace(result, reported_cost=reported)
+
+    def choose(self, model: str, state: dict, question: dict) -> ChoiceResult:
+        data, reported = self._post(model, state, {"choice": question})
+        try:
+            result = parse_choice(data, question)
+        except (KeyError, TypeError, ValueError, AttributeError) as e:
+            raise OutputInvalid(f"unexpected choice: {e!r}", reported_cost=reported) from e
         return replace(result, reported_cost=reported)

@@ -65,8 +65,17 @@ class ClassifierResult:
     reported_cost: float | None = None
 
 
+@dataclass(frozen=True)
+class ChoiceResult:
+    choice: str
+    confidence: float
+    reported_cost: float | None = None
+
+
 class Classifier(Protocol):
     def classify(self, model: str, state: dict) -> ClassifierResult: ...
+
+    def choose(self, model: str, state: dict, question: dict) -> ChoiceResult: ...
 
 
 def parse_answers(data: dict) -> ClassifierResult:
@@ -94,3 +103,25 @@ def parse_answers(data: dict) -> ClassifierResult:
         sentiment=int(sentiment),
         sentiment_confidence=sentiment_confidence,
     )
+
+
+def theme_question(themes) -> dict:
+    """A single choice question over existing themes (rows or dicts with id, name, description)."""
+    criteria = {str(t["id"]): f"{t['name']}: {t['description']}" for t in themes}
+    criteria["none"] = "None of these themes fits this message."
+    return {
+        "type": "choice",
+        "instructions": "Which recurring community theme is this Discord message about?",
+        "criteria": criteria,
+    }
+
+
+def parse_choice(data: dict, question: dict) -> ChoiceResult:
+    answer = data["answers"]["choice"]
+    choice = str(answer["choice"])
+    confidence = float(answer["confidence"])
+    if choice not in question["criteria"]:
+        raise ValueError(f"choice {choice!r} was not offered")
+    if not 0.0 <= confidence <= 1.0:
+        raise ValueError(f"confidence out of range: {confidence}")
+    return ChoiceResult(choice=choice, confidence=confidence)

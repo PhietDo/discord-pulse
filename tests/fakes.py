@@ -97,7 +97,7 @@ class FakeBackend:
         return item
 
 
-from pulse.agents.classifier import ClassifierResult  # noqa: E402
+from pulse.agents.classifier import ChoiceResult, ClassifierResult  # noqa: E402
 from pulse.config import ClassifierConfig  # noqa: E402
 
 
@@ -115,12 +115,18 @@ def classifier_config(**overrides) -> ClassifierConfig:
 
 
 class FakeClassifier:
-    """Like FakeBackend: queued items first, then handler(state). Exceptions are raised."""
+    """Like FakeBackend: queued items first, then a handler. Exceptions are raised.
 
-    def __init__(self, responses=None, handler=None):
+    classify: `responses` then `handler(state)`; choose: `choices` then `choose_handler(state, question)`.
+    """
+
+    def __init__(self, responses=None, handler=None, choices=None, choose_handler=None):
         self.responses = list(responses or [])
         self.handler = handler
+        self.choices = list(choices or [])
+        self.choose_handler = choose_handler
         self.calls: list[dict] = []
+        self.choose_calls: list[dict] = []
 
     def classify(self, model, state):
         self.calls.append({"model": model, "state": state})
@@ -129,6 +135,17 @@ class FakeClassifier:
             raise AssertionError("FakeClassifier has no response queued")
         if callable(item) and not isinstance(item, ClassifierResult):
             item = item(state)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def choose(self, model, state, question):
+        self.choose_calls.append({"model": model, "state": state, "question": question})
+        item = self.choices.pop(0) if self.choices else self.choose_handler
+        if item is None:
+            raise AssertionError("FakeClassifier has no choice queued")
+        if callable(item) and not isinstance(item, ChoiceResult):
+            item = item(state, question)
         if isinstance(item, Exception):
             raise item
         return item

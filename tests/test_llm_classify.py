@@ -82,3 +82,29 @@ def test_config_property_exposes_config():
     llm = make_llm(connect(":memory:"), config, FakeBackend(), classifier=FakeClassifier())
     assert llm.config is config
     assert llm.has_classifier is True
+
+
+from pulse.agents.classifier import ChoiceResult
+
+QUESTION = {"type": "choice", "criteria": {"1": "A", "none": "none"}}
+
+
+def test_choose_returns_choice_and_logs_classifier_run():
+    conn = connect(":memory:")
+    fc = FakeClassifier(choices=[ChoiceResult("1", 0.8, 0.00001)])
+    llm = make_llm(conn, make_config(classifier=classifier_config()), FakeBackend(), classifier=fc)
+    resp = llm.choose({"message_id": "m1"}, QUESTION)
+    assert (resp.result.choice, resp.result.confidence) == ("1", 0.8)
+    [run] = runs(conn)
+    assert (run["agent"], run["status"]) == ("classifier", "ok")
+    assert run["cost_usd"] == pytest.approx(0.00001)
+    assert fc.choose_calls == [{"model": "jev-latest", "state": {"message_id": "m1"}, "question": QUESTION}]
+
+
+def test_choose_is_blocked_by_budget_cap():
+    conn = connect(":memory:")
+    fc = FakeClassifier(choices=[ChoiceResult("1", 0.8)])
+    llm = make_llm(conn, make_config(classifier=classifier_config(), daily_usd_cap=0.0), FakeBackend(), classifier=fc)
+    with pytest.raises(BudgetExceeded):
+        llm.choose({}, QUESTION)
+    assert fc.choose_calls == []

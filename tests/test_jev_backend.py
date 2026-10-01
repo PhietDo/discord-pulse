@@ -138,3 +138,43 @@ def test_confidence_out_of_range_is_output_invalid():
     backend, _ = backend_with(lambda r: httpx.Response(200, json=bad))
     with pytest.raises(OutputInvalid):
         backend.classify("jev-latest", STATE)
+
+
+from pulse.agents.classifier import ChoiceResult, theme_question
+
+THEMES = [{"id": 3, "name": "Auth docs", "description": "token step missing"},
+          {"id": 7, "name": "M1 install", "description": "arm64 wheels"}]
+CHOICE_FIXTURE = {
+    "model": "typesafe/jev-1.13-20260917",
+    "answers": {"choice": {"type": "choice", "choice": "7", "probabilities": {"3": 0.05, "7": 0.9, "none": 0.05}, "confidence": 0.9}},
+    "usage": {"input_tokens": 300, "output_tokens": 20, "cost": 1.2e-05},
+}
+
+
+def test_theme_question_offers_each_theme_and_none():
+    q = theme_question(THEMES)
+    assert q["type"] == "choice"
+    assert set(q["criteria"]) == {"3", "7", "none"}
+    assert q["criteria"]["7"] == "M1 install: arm64 wheels"
+
+
+def test_choose_posts_single_choice_question_and_parses():
+    backend, seen = backend_with(lambda r: httpx.Response(200, json=CHOICE_FIXTURE))
+    q = theme_question(THEMES)
+    result = backend.choose("jev-latest", STATE, q)
+    assert result == ChoiceResult(choice="7", confidence=0.9, reported_cost=pytest.approx(1.2e-05))
+    assert json.loads(seen[0].content)["questions"] == {"choice": q}
+
+
+def test_choose_rejects_a_choice_not_offered():
+    bad = json.loads(json.dumps(CHOICE_FIXTURE))
+    bad["answers"]["choice"]["choice"] = "42"
+    backend, _ = backend_with(lambda r: httpx.Response(200, json=bad))
+    with pytest.raises(OutputInvalid):
+        backend.choose("jev-latest", STATE, theme_question(THEMES))
+
+
+def test_choose_maps_server_errors_to_transient():
+    backend, _ = backend_with(lambda r: httpx.Response(503, text="busy"))
+    with pytest.raises(TransientError):
+        backend.choose("jev-latest", STATE, theme_question(THEMES))

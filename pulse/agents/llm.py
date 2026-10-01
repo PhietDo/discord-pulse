@@ -18,7 +18,7 @@ import jsonschema
 from pulse.agents.base import (
     Backend, BackendResult, BudgetExceeded, LLMError, OutputInvalid, ProviderError, TransientError,
 )
-from pulse.agents.classifier import Classifier, ClassifierResult
+from pulse.agents.classifier import Classifier, ChoiceResult, ClassifierResult
 from pulse.config import Config, ModelRef, Price
 from pulse.models import to_iso
 from pulse.pricing import cost_usd, request_cost
@@ -36,6 +36,12 @@ class LLMResponse:
 @dataclass(frozen=True)
 class ClassifyResponse:
     result: ClassifierResult
+    run_id: int
+
+
+@dataclass(frozen=True)
+class ChoiceResponse:
+    result: ChoiceResult
     run_id: int
 
 
@@ -165,12 +171,8 @@ class LLMClient:
         self._record(agent, ref, started, "failed", error, usage)
         raise LLMError(f"{agent}: {error}")
 
-    def classify(self, state: dict) -> ClassifyResponse:
-        """Ask the configured classifier (Jev) about one message state.
-
-        Same contract as complete(): budget gate, transient backoff, one retry on
-        invalid output, exactly one agent_runs row (agent "classifier").
-        """
+    def _classifier_call(self, call: Callable[[Classifier, str], Any]) -> tuple[Any, int]:
+        """Budget gate, transient backoff, one retry on invalid output, one agent_runs row."""
         cfg = self._config.classifier
         if cfg is None or self._classifier is None:
             raise RuntimeError("classifier not configured")
@@ -185,7 +187,7 @@ class LLMClient:
         error = "no attempt made"
         for _ in range(MAX_VALIDATION_ATTEMPTS):
             try:
-                result = self._with_backoff(lambda: self._classifier.classify(ref.model, state))
+                result = self._with_backoff(lambda: call(self._classifier, ref.model))
             except OutputInvalid as e:
                 usage.cost_usd += request_cost(price, e.reported_cost)
                 error = f"invalid output: {e}"
@@ -194,11 +196,24 @@ class LLMClient:
                 error = f"provider error: {e}"
                 break
             usage.cost_usd += request_cost(price, result.reported_cost)
-            run_id = self._record("classifier", ref, started, "ok", None, usage)
-            return ClassifyResponse(result, run_id)
+            return result, self._record("classifier", ref, started, "ok", None, usage)
 
         self._record("classifier", ref, started, "failed", error, usage)
         raise LLMError(f"classifier: {error}")
+
+    def classify(self, state: dict) -> ClassifyResponse:
+        """Ask the configured classifier (Jev) about one message state.
+
+        Same contract as complete(): budget gate, transient backoff, one retry on
+        invalid output, exactly one agent_runs row (agent "classifier").
+        """
+        result, run_id = self._classifier_call(lambda c, model: c.classify(model, state))
+        return ClassifyResponse(result, run_id)
+
+    def choose(self, state: dict, question: dict) -> ChoiceResponse:
+        """Ask the classifier (Jev) one choice question about one message state."""
+        result, run_id = self._classifier_call(lambda c, model: c.choose(model, state, question))
+        return ChoiceResponse(result, run_id)
 
     def _with_backoff(self, fn: Callable[[], Any]) -> Any:
         for attempt in range(MAX_TRANSIENT_ATTEMPTS):
