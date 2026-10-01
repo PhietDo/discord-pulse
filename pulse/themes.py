@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 from pulse.models import to_iso
@@ -96,6 +96,20 @@ class ThemeBudget:
     merges_left: int = MAX_MERGES_PER_RUN
 
 
+def budget_for_day(conn: sqlite3.Connection, now: datetime) -> ThemeBudget:
+    """The guardrail is per UTC day: subtract creates and merges already logged since midnight."""
+    midnight = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    counts = dict(conn.execute(
+        "SELECT kind, COUNT(*) FROM theme_events WHERE kind IN ('create', 'merge') AND created_at >= ?"
+        " GROUP BY kind",
+        (to_iso(midnight),),
+    ).fetchall())
+    return ThemeBudget(
+        new_themes_left=max(0, MAX_NEW_THEMES_PER_RUN - counts.get("create", 0)),
+        merges_left=max(0, MAX_MERGES_PER_RUN - counts.get("merge", 0)),
+    )
+
+
 @dataclass
 class ThemeChanges:
     created: int = 0
@@ -103,6 +117,8 @@ class ThemeChanges:
     merged: int = 0
     renamed: int = 0
     rejected: list[str] = field(default_factory=list)
+    # Messages proposed only for rejected new themes: leave them unthemed so the next run retries.
+    unthemed_ids: list[str] = field(default_factory=list)
 
 
 def apply_proposal(
@@ -110,10 +126,18 @@ def apply_proposal(
 ) -> ThemeChanges:
     changes = ThemeChanges()
     active = {r["id"] for r in active_themes(conn)}
+    placed: set[str] = set()
+    orphaned: list[str] = []
 
     for r in proposal["renames"]:
         if r["theme_id"] not in active or not _clean(r["name"]):
             changes.rejected.append(f"rename {r['theme_id']}: not an active theme or empty name")
+            continue
+        holder = find_active(conn, r["name"])
+        if holder is not None and holder != r["theme_id"]:
+            changes.rejected.append(
+                f"rename {r['theme_id']} to {_clean(r['name'])!r}: theme {holder} already has that name"
+            )
             continue
         rename_theme(conn, r["theme_id"], r["name"], r["description"], now, run_id)
         changes.renamed += 1
@@ -124,7 +148,7 @@ def apply_proposal(
             changes.rejected.append(f"merge {src}->{dst}: both themes must be active and different")
             continue
         if budget.merges_left <= 0:
-            changes.rejected.append(f"merge {src}->{dst}: run limit of {MAX_MERGES_PER_RUN} merges reached")
+            changes.rejected.append(f"merge {src}->{dst}: daily limit of {MAX_MERGES_PER_RUN} merges reached")
             continue
         merge_themes(conn, src, dst, now, run_id, m["reason"])
         active.discard(src)
@@ -134,13 +158,15 @@ def apply_proposal(
     for t in proposal["new_themes"]:
         if not _clean(t["name"]):
             changes.rejected.append("new theme with an empty name")
+            orphaned += t["message_ids"]
             continue
         tid = find_active(conn, t["name"])
         if tid is None:
             if budget.new_themes_left <= 0:
                 changes.rejected.append(
-                    f"new theme {t['name']!r}: run limit of {MAX_NEW_THEMES_PER_RUN} new themes reached"
+                    f"new theme {t['name']!r}: daily limit of {MAX_NEW_THEMES_PER_RUN} new themes reached"
                 )
+                orphaned += t["message_ids"]
                 continue
             tid, _ = create_theme(conn, t["name"], t["description"], now, run_id)
             budget.new_themes_left -= 1
@@ -148,6 +174,7 @@ def apply_proposal(
             active.add(tid)
         for mid in t["message_ids"]:
             changes.assigned += assign(conn, mid, tid)
+            placed.add(mid)
 
     resolved = theme_resolution(conn)
     for a in proposal["assignments"]:
@@ -157,4 +184,6 @@ def apply_proposal(
                 changes.rejected.append(f"assign {a['message_id']}->{tid}: not an active theme")
                 continue
             changes.assigned += assign(conn, a["message_id"], root)
+            placed.add(a["message_id"])
+    changes.unthemed_ids = list(dict.fromkeys(m for m in orphaned if m not in placed))
     return changes

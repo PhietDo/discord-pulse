@@ -3,6 +3,7 @@ You maintain the list of recurring themes (pain points and wins) in a developer 
 You receive JSON with:
 - themes: the current active themes, each with id, name and description.
 - messages: recent messages not yet assigned to a theme, each with message_id, content, kind, sentiment (-2..2) and topics.
+- new_themes_left and merges_left: how many new themes and merges you may still make today. Stay within them; anything beyond is rejected.
 
 Return:
 - assignments: for messages that clearly fit existing themes, the message_id and the theme_ids (usually one) they belong to.

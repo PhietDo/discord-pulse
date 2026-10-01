@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from pulse.agents.base import BudgetExceeded, LLMError
+from pulse.agents.base import BudgetExceeded, LLMError, ProviderError
 from pulse.agents.classifier import theme_question
 from pulse.agents.llm import LLMClient
-from pulse.themes import ThemeBudget, active_themes, apply_proposal, assign, mark_themed
+from pulse.stats import theme_resolution
+from pulse.themes import active_themes, apply_proposal, assign, budget_for_day, mark_themed
 
 SCHEMA_NAME = "theme_result"
 BATCH_SIZE = 60
@@ -51,6 +53,7 @@ THEME_SCHEMA = _obj({
 class ThemeStats:
     considered: int = 0
     jev_assigned: int = 0
+    jev_failed: int = 0
     llm_batches: int = 0
     failed_batches: int = 0
     skipped_budget: bool = False
@@ -102,18 +105,43 @@ def validate_proposal(data: dict, message_ids: set[str], theme_ids: set[int]) ->
         raise ValueError(f"unknown message ids {bad_messages}, unknown theme ids {bad_themes}")
 
 
+def themes_for_jev(conn: sqlite3.Connection, limit: int = MAX_THEMES_FOR_JEV) -> list[sqlite3.Row]:
+    """Active themes with the most recent assignment first (by message created_at, merged
+    themes counted toward their active root), ties by id; never-assigned themes last."""
+    themes = active_themes(conn)
+    resolved = theme_resolution(conn)
+    latest: dict[int, str] = {}
+    for r in conn.execute(
+        "SELECT mt.theme_id, MAX(m.created_at) AS last FROM message_themes mt"
+        " JOIN messages m ON m.id = mt.message_id GROUP BY mt.theme_id"
+    ):
+        root = resolved.get(r["theme_id"], r["theme_id"])
+        if r["last"] > latest.get(root, ""):
+            latest[root] = r["last"]
+    used = sorted((t for t in themes if t["id"] in latest), key=lambda t: t["id"])
+    used.sort(key=lambda t: latest[t["id"]], reverse=True)
+    unused = [t for t in themes if t["id"] not in latest]
+    return (used + unused)[:limit]
+
+
 def _jev_stage(conn, llm, rows, themes, concurrency, stats, now) -> list[sqlite3.Row]:
     cfg = llm.config.classifier
-    question = theme_question(themes[:MAX_THEMES_FOR_JEV])
+    question = theme_question(themes)
     states = [_state(r) for r in rows]
     by_id = {r["id"]: r for r in rows}
+    # After the first BudgetExceeded, remaining workers stop without calling the classifier,
+    # so a capped run records one skipped_budget row, not one per candidate.
+    stop = threading.Event()
 
     def call(state):
+        if stop.is_set():
+            return state["message_id"], None, "budget"
         try:
             return state["message_id"], llm.choose(state, question), None
         except BudgetExceeded:
+            stop.set()
             return state["message_id"], None, "budget"
-        except LLMError:
+        except (LLMError, ProviderError):
             return state["message_id"], None, "failed"
 
     leftovers = []
@@ -123,6 +151,8 @@ def _jev_stage(conn, llm, rows, themes, concurrency, stats, now) -> list[sqlite3
             if error == "budget":
                 stats.skipped_budget = True
                 continue
+            if error == "failed":
+                stats.jev_failed += 1
             if error is None and resp.result.choice != "none" and resp.result.confidence >= cfg.min_confidence:
                 with llm.db_lock, conn:
                     assign(conn, mid, int(resp.result.choice))
@@ -141,14 +171,14 @@ def run_themes(conn: sqlite3.Connection, llm: LLMClient, now: datetime, *, concu
     if not rows:
         return stats
 
-    themes = active_themes(conn)
+    themes = themes_for_jev(conn)
     cfg = llm.config.classifier
     if themes and cfg is not None and cfg.enabled and llm.has_classifier:
         rows = _jev_stage(conn, llm, rows, themes, concurrency, stats, now)
         if stats.skipped_budget:
             return stats
 
-    budget = ThemeBudget()
+    budget = budget_for_day(conn, now)
     system = load_prompt()
     for i in range(0, len(rows), BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
@@ -158,6 +188,8 @@ def run_themes(conn: sqlite3.Connection, llm: LLMClient, now: datetime, *, concu
         user = json.dumps({
             "themes": [{"id": t["id"], "name": t["name"], "description": t["description"]} for t in current],
             "messages": [_state(r) for r in batch],
+            "new_themes_left": budget.new_themes_left,
+            "merges_left": budget.merges_left,
         }, ensure_ascii=False)
         try:
             resp = llm.complete(
@@ -173,7 +205,8 @@ def run_themes(conn: sqlite3.Connection, llm: LLMClient, now: datetime, *, concu
         stats.llm_batches += 1
         with llm.db_lock, conn:
             changes = apply_proposal(conn, resp.data, now, resp.run_id, budget)
-            mark_themed(conn, ids, now)
+            retry = set(changes.unthemed_ids)
+            mark_themed(conn, [mid for mid in ids if mid not in retry], now)
         stats.created += changes.created
         stats.assigned += changes.assigned
         stats.merged += changes.merged

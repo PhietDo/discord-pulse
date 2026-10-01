@@ -3,7 +3,7 @@ import json
 from pulse.db import connect
 from pulse.store import upsert_messages
 from pulse.themes import (
-    ThemeBudget, active_themes, apply_proposal, assign, create_theme, find_active, mark_themed, merge_themes,
+    ThemeBudget, active_themes, apply_proposal, assign, budget_for_day, create_theme, find_active, mark_themed, merge_themes,
     rename_theme,
 )
 from tests.fakes import T0, msg, set_triage
@@ -118,3 +118,44 @@ def test_invalid_references_are_rejected_not_applied():
     assert (changes.renamed, changes.merged, changes.assigned) == (0, 0, 0)
     assert len(changes.rejected) == 3
     assert conn.execute("SELECT COUNT(*) FROM message_themes").fetchone()[0] == 0
+
+
+def test_rename_to_another_active_themes_name_is_rejected():
+    conn = db()
+    with conn:
+        a, _ = create_theme(conn, "Auth docs", "", T0)
+        b, _ = create_theme(conn, "Rate limits", "", T0)
+        changes = apply_proposal(conn, empty(renames=[
+            {"theme_id": b, "name": " auth  DOCS ", "description": ""},
+            {"theme_id": a, "name": "AUTH docs", "description": "case change of itself is fine"},
+        ]), T0, None, ThemeBudget())
+    assert changes.renamed == 1
+    assert len(changes.rejected) == 1 and "already" in changes.rejected[0]
+    assert conn.execute("SELECT name FROM themes WHERE id = ?", (b,)).fetchone()[0] == "Rate limits"
+
+
+def test_cap_rejected_new_theme_reports_its_unassigned_messages():
+    conn = db("m1", "m2", "m3")
+    with conn:
+        tid, _ = create_theme(conn, "A", "", T0)
+        changes = apply_proposal(conn, empty(
+            new_themes=[{"name": "New", "description": "", "message_ids": ["m1", "m2"]}],
+            assignments=[{"message_id": "m2", "theme_ids": [tid]}],
+        ), T0, None, ThemeBudget(new_themes_left=0))
+    assert changes.unthemed_ids == ["m1"]
+
+
+def test_budget_for_day_counts_todays_creates_and_merges():
+    conn = db()
+    yesterday = T0.replace(day=T0.day - 1)
+    with conn:
+        old = [create_theme(conn, f"Old {i}", "", yesterday)[0] for i in range(4)]
+        merge_themes(conn, old[0], old[1], yesterday)
+        new = [create_theme(conn, f"New {i}", "", T0)[0] for i in range(3)]
+        merge_themes(conn, new[0], new[1], T0)
+    budget = budget_for_day(conn, T0)
+    assert (budget.new_themes_left, budget.merges_left) == (2, 2)
+    with conn:
+        for i in range(3):
+            create_theme(conn, f"More {i}", "", T0)
+    assert budget_for_day(conn, T0).new_themes_left == 0

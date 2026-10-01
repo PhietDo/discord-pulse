@@ -113,8 +113,9 @@ def format_modqueue(stats: ModQueueStats) -> str:
 
 
 def format_themes(stats: ThemeStats) -> str:
+    jev_failed = f", jev failed {stats.jev_failed}" if stats.jev_failed else ""
     lines = [
-        f"themes: considered {stats.considered}, jev assigned {stats.jev_assigned},"
+        f"themes: considered {stats.considered}, jev assigned {stats.jev_assigned}{jev_failed},"
         f" llm batches {stats.llm_batches} (failed {stats.failed_batches}), new themes {stats.created},"
         f" assignments {stats.assigned}, merges {stats.merged}, renames {stats.renamed}"
     ]
