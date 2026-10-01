@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import message_card, range_selector, status_pill %}
+{% block title %}Pain points{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Pain points</h1><p class="sub">Score = messages in the last 7 days × mean negativity × (1 + growth vs the 7 days before)</p></div>
+  {{ range_selector(f, "/pain", {"theme": sel.id if sel else ""}) }}
+</div>
+
+{% if not rows and not sel %}
+<p class="empty">No pain points for this filter yet. They appear after the theme stage runs (<code>python -m pulse.run themes</code>).</p>
+{% else %}
+<section class="panel">
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Pain point</th><th>Status</th><th>Trend, {{ f.days }}d</th><th class="num">Msgs 7d</th><th class="num">Prev 7d</th><th class="num">Negativity</th><th class="num">Score</th></tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr{% if sel and p.id == sel.id %} class="sel"{% endif %}>
+        <td><a class="row-btn" href="/pain{{ f.qs(theme=p.id) }}">{{ p.name }}</a>
+          <div class="pmeta">{% if p.prev_volume == 0 %}<span class="pill rising">new this week</span>{% elif p.trend > 1 %}<span class="pill rising">rising</span>{% endif %}</div></td>
+        <td>{{ status_pill(p.status, p.status_label) }}</td>
+        <td>{{ p.spark }}</td>
+        <td class="num">{{ p.volume }}</td>
+        <td class="num">{{ p.prev_volume }}</td>
+        <td class="num">{{ "%.2f"|format(p.negativity) }}</td>
+        <td class="num"><b>{{ p.score|round|int }}</b></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+{% if sel %}
+<div class="grid2">
+  <section class="panel" aria-labelledby="h-ev">
+    <div class="panel-head"><h2 id="h-ev">{{ sel.name }}</h2><span class="note">{{ evidence|length }} messages shown · most negative first</span></div>
+    {% if sel.description %}<p class="mut" style="margin:-6px 0 12px">{{ sel.description }}</p>{% endif %}
+    <form class="status-row" method="post" action="/pain/{{ sel.id }}/status{{ f.qs() }}">
+      <label for="st-sel" class="label">Status</label>
+      <select id="st-sel" name="status">
+        {% for value, label in statuses %}<option value="{{ value }}"{% if sel.status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <input id="st-note" type="text" name="note" value="{{ sel.note }}" maxlength="500" placeholder="Note for the team (optional)" aria-label="Status note">
+      <button class="btn" type="submit">Save</button>
+      {% if saved %}<span class="pmeta" role="status">Saved.</span>{% endif %}
+    </form>
+    {% if comparison %}
+    <div class="compare" style="margin-bottom:14px">
+      <div class="inv"><span class="label">Before ({{ comparison.days }} days)</span><p>{{ comparison.before.messages }} messages · avg {{ comparison.before.avg_sentiment|signed }}</p></div>
+      <div class="inv"><span class="label">After ({{ comparison.days }} days)</span><p>{{ comparison.after.messages }} messages · avg {{ comparison.after.avg_sentiment|signed }}</p></div>
+    </div>
+    {% endif %}
+    <div class="msgs">
+      {% for m in evidence %}{{ message_card(m, now, f) }}{% else %}<p class="empty">No messages for this pain point in this window and channel.</p>{% endfor %}
+    </div>
+  </section>
+  <section class="panel" aria-labelledby="h-side">
+    <div class="panel-head"><h2 id="h-side">Message types</h2></div>
+    {% if sel.kinds %}
+    <div class="mix-legend" style="margin:0 0 14px">{% for k, n in sel.kinds.items() %}<span>{{ k|kind_label }}<b>{{ n }}</b></span>{% endfor %}</div>
+    {% else %}<p class="empty">No messages in the last 7 days.</p>{% endif %}
+    <p><a href="/messages{{ f.qs(theme=sel.id) }}">All messages in this pain point</a> · <a href="/bugs{{ f.qs() }}">Bugs</a></p>
+    {% block ask_why %}{% endblock %}
+  </section>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
