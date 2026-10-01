@@ -1,10 +1,16 @@
 """Message citations in agent markdown: [[msg:<message_id>]]."""
 from __future__ import annotations
 
+import html
+import logging
 import re
 import sqlite3
 
+import markdown
+
 from pulse.links import jump_link
+
+log = logging.getLogger(__name__)
 
 CITATION_RE = re.compile(r"\[\[msg:([^\]\s]+)\]\]")
 # Near-misses models write: [[msg:<id>]] and [[msg: id ]].
@@ -60,3 +66,27 @@ def render_text(markdown: str, conn: sqlite3.Connection) -> str:
         return f"({row['author_name']}, {jump_link(row['guild_id'], row['channel_id'], match.group(1))})"
 
     return CITATION_RE.sub(replace, markdown)
+
+
+def render_html(markdown_text: str, conn: sqlite3.Connection) -> str:
+    """HTML for agent reports. Raw HTML from the model is escaped first; each [[msg:id]]
+    becomes "@author" linked to the message in Discord (excerpt on hover); unknown ids
+    render as "[missing message]" and are logged."""
+
+    def replace(match: re.Match) -> str:
+        mid = match.group(1)
+        row = conn.execute(
+            "SELECT guild_id, channel_id, author_name, content FROM messages WHERE id = ?", (mid,)
+        ).fetchone()
+        if row is None:
+            log.warning("citation to unknown message %s", mid)
+            return "[missing message]"
+        link = jump_link(row["guild_id"], row["channel_id"], mid)
+        excerpt = row["content"][:140]
+        return (
+            f'<a class="cite" href="{html.escape(link)}" title="{html.escape(excerpt)}"'
+            f' target="_blank" rel="noopener">@{html.escape(row["author_name"])}</a>'
+        )
+
+    escaped = html.escape(markdown_text, quote=False)
+    return markdown.markdown(CITATION_RE.sub(replace, escaped), extensions=["sane_lists"])

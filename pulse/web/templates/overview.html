@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "_macros.html" import range_selector %}
+{% block title %}Overview{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Community pulse</h1><p class="sub">Last {{ f.days }} days</p></div>
+  {{ range_selector(f, "/") }}
+</div>
+{% endblock %}

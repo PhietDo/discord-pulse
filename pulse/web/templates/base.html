@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}Overview{% endblock %} · Discord Pulse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/static/pulse.css">
+<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="brand" href="/{{ f.qs() }}">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="7" fill="var(--accent)"/><path d="M4 14h4l2.5-6 4 11 2.5-5H22" fill="none" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Discord Pulse
+    </a>
+    <div class="server"><b>{{ server_name }}</b>{% if demo %}Demo data · agents off{% endif %}</div>
+    <form class="filter" method="get">
+      <label for="ch-sel" class="label">Channel</label>
+      <select id="ch-sel" name="channel" onchange="this.form.submit()">
+        <option value="">All channels</option>
+        {% for c in channels %}<option value="{{ c.id }}"{% if f.channel == c.id %} selected{% endif %}>#{{ c.name }}</option>{% endfor %}
+      </select>
+      <input type="hidden" name="days" value="{{ f.days }}">
+      <noscript><button class="btn" type="submit">Apply</button></noscript>
+    </form>
+    <nav aria-label="Views">
+      <ul>
+        {% for key, label, count, hot in nav %}
+        <li><a href="{{ paths[key] }}{{ f.qs() }}"{% if active == key %} aria-current="page"{% endif %}>{{ label }}{% if count is not none %} <span class="count{% if hot %} hot{% endif %}">{{ count }}</span>{% endif %}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </aside>
+  <main>
+    {% if over_cap %}<p class="banner" role="status">Today's spend ${{ "%.2f"|format(spent) }} reached the ${{ "%.2f"|format(cap) }} daily cap. Agents stop until midnight UTC; the dashboard still works.</p>{% endif %}
+    {% block main %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

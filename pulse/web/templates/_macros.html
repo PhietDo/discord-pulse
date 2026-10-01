@@ -1,0 +1,37 @@
+{% macro message_card(m, now, f, reason=None) -%}
+<article class="msg" id="msg-{{ m.message_id }}">
+  {% if m.avatar_url %}<img class="av" src="{{ m.avatar_url }}" alt="" loading="lazy">{% else %}<div class="av" style="background:{{ m.author|avatar_color }}" aria-hidden="true">{{ m.author[:1]|upper }}</div>{% endif %}
+  <div>
+    <div class="mhead">
+      <span class="who">{{ m.author }}</span>
+      {% if m.is_team %}<span class="pill team">team</span>{% endif %}
+      <span class="where">#{{ m.channel }}</span>
+      <span title="{{ m.created_at|utc }}">{{ m.created_at|age(now) }}</span>
+      {% if reason %}<span class="pill {{ reason }}"><span class="dotc"></span>{{ reason }}</span>{% endif %}
+    </div>
+    {% if m.content|length > 400 %}
+    <p class="mtext">{{ m.content[:400] }}…</p>
+    <details class="more"><summary>Show all</summary><p class="mtext">{{ m.content }}</p></details>
+    {% else %}
+    <p class="mtext">{{ m.content }}</p>
+    {% endif %}
+    <div class="mfoot">
+      <a href="{{ m.link }}" target="_blank" rel="noopener">Open in Discord ↗</a>
+      <a href="/messages{{ f.qs(author_id=m.author_id) }}">All from {{ m.author }}</a>
+      {% if m.kind %}<span class="pill kind">{{ m.kind|kind_label }}</span>{% endif %}
+      {% if m.sentiment is not none %}<span class="sent {{ 'neg' if m.sentiment < 0 else 'pos' if m.sentiment > 0 else 'mut' }}">sentiment {{ m.sentiment|signed(0) }}</span>{% endif %}
+      {% if caller is defined %}{{ caller() }}{% endif %}
+    </div>
+  </div>
+</article>
+{%- endmacro %}
+
+{% macro status_pill(status, label) -%}
+<span class="pill {{ {'new': 'kind', 'acknowledged': 'unanswered', 'in_progress': 'team', 'shipped': 'ok'}[status] }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro range_selector(f, path, extra={}) -%}
+<div class="range" role="group" aria-label="Window">
+  {% for d in (7, 14, 30, 90) %}<a href="{{ path }}{{ f.qs(days=d, **extra) }}"{% if f.days == d %} aria-current="true"{% endif %}>{{ d }}d</a>{% endfor %}
+</div>
+{%- endmacro %}

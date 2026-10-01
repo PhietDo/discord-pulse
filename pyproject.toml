@@ -8,6 +8,11 @@ dependencies = [
     "openai>=1.50",
     "jsonschema>=4.21",
     "httpx>=0.27",
+    "fastapi>=0.115",
+    "jinja2>=3.1",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+    "markdown>=3.6",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +27,7 @@ include = ["pulse*"]
 
 [tool.setuptools.package-data]
 "pulse.agents" = ["prompts/*.md"]
+"pulse.web" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
