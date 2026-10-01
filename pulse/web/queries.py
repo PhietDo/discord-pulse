@@ -78,6 +78,51 @@ def queue_cards(conn, f: Filters, *, limit: int = 200, reason: str | None = None
     ]
 
 
+def bug_groups(conn, f: Filters, *, open_only: bool = False, per_group: int = 5) -> list[dict]:
+    """Bug reports in the window grouped by pain point (spec 8.4), most urgent pain point first."""
+    scope, params = stats.scope_clause(f.channels)
+    rows = conn.execute(
+        "SELECT m.id, m.author_id, m.thread_id, m.created_at FROM messages m JOIN triage t ON t.message_id = m.id"
+        " WHERE m.is_team = 0 AND m.is_bot = 0 AND t.kind = 'bug'"
+        f" AND m.created_at >= ? AND m.created_at < ?{scope} ORDER BY m.created_at DESC, m.id",
+        (to_iso(f.start), to_iso(f.end), *params),
+    ).fetchall()
+    resolved = stats.theme_resolution(conn)
+    names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM themes")}
+    theme_of: dict[str, int] = {}
+    for r in conn.execute("SELECT message_id, theme_id FROM message_themes ORDER BY theme_id"):
+        theme_of.setdefault(r["message_id"], resolved.get(r["theme_id"], r["theme_id"]))
+    rank = {s.theme_id: i for i, s in enumerate(stats.theme_scores(conn, f.now, limit=1000, channels=f.channels))}
+    groups: dict = {}
+    for r in rows:
+        tid = theme_of.get(r["id"])
+        g = groups.setdefault(tid, {
+            "theme_id": tid, "name": names.get(tid, "Not yet grouped") if tid is not None else "Not yet grouped",
+            "ids": [], "times": [], "authors": set(), "unanswered_ids": [],
+        })
+        g["ids"].append(r["id"])
+        g["times"].append(r["created_at"])
+        g["authors"].add(r["author_id"])
+        if stats.first_team_reply(conn, r["id"], r["thread_id"], r["created_at"]) is None:
+            g["unanswered_ids"].append(r["id"])
+    ordered = sorted(
+        groups.values(),
+        key=lambda g: (g["theme_id"] is None, rank.get(g["theme_id"], 10**6), -len(g["ids"]), g["name"]),
+    )
+    out = []
+    for g in ordered:
+        shown = g["unanswered_ids"] if open_only else g["ids"]
+        if not shown:
+            continue
+        out.append({
+            "theme_id": g["theme_id"], "name": g["name"], "count": len(g["ids"]), "people": len(g["authors"]),
+            "unanswered": len(g["unanswered_ids"]), "unanswered_ids": set(g["unanswered_ids"]),
+            "latest": g["times"][0], "first": g["times"][-1],
+            "cards": cards_by_ids(conn, shown[:per_group]), "more": max(0, len(shown) - per_group),
+        })
+    return out
+
+
 def launch_markers(conn, start: datetime, end: datetime) -> list[tuple[str, str]]:
     rows = conn.execute(
         "SELECT name, date FROM launches WHERE date >= ? AND date <= ? ORDER BY date",

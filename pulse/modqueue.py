@@ -46,6 +46,20 @@ def list_open(
     ).fetchall()
 
 
+def close_item(
+    conn: sqlite3.Connection, queue_id: int, status: str, now: datetime, closed_by: str = "dashboard"
+) -> bool:
+    """Close an open item as handled or dismissed. Returns False if it is missing or already closed."""
+    if status not in ("handled", "dismissed"):
+        raise ValueError(f"status must be handled or dismissed, got {status!r}")
+    with conn:
+        cur = conn.execute(
+            "UPDATE mod_queue SET status = ?, closed_at = ?, closed_by = ? WHERE id = ? AND status = 'open'",
+            (status, to_iso(now), closed_by, queue_id),
+        )
+    return cur.rowcount == 1
+
+
 def refresh_mod_queue(conn: sqlite3.Connection, config: Config, now: datetime) -> ModQueueStats:
     stats = ModQueueStats()
     now_iso = to_iso(now)

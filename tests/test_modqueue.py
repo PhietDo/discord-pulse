@@ -167,3 +167,22 @@ def test_list_open_filters_by_channel_and_exposes_queue_id():
     assert {r["message_id"] for r in list_open(conn, channels=("100",))} == {"a", "b"}
     assert [r["message_id"] for r in list_open(conn, channels=("200",))] == ["c"]
     assert all(isinstance(r["queue_id"], int) for r in list_open(conn))
+
+
+def test_close_item_closes_once():
+    from pulse.modqueue import close_item
+
+    conn = connect(":memory:")
+    upsert_messages(conn, [msg("a", "broken", minutes=0)], frozenset())
+    set_triage(conn, "a", sentiment=-2, kind="bug")
+    refresh_mod_queue(conn, make_config(), T0 + timedelta(hours=1))
+    qid = conn.execute("SELECT id FROM mod_queue").fetchone()[0]
+    assert close_item(conn, qid, "handled", T0 + timedelta(hours=2)) is True
+    row = conn.execute("SELECT status, closed_by, closed_at FROM mod_queue WHERE id = ?", (qid,)).fetchone()
+    assert (row["status"], row["closed_by"]) == ("handled", "dashboard")
+    assert row["closed_at"] == to_iso(T0 + timedelta(hours=2))
+    assert close_item(conn, qid, "dismissed", T0 + timedelta(hours=3)) is False
+    assert close_item(conn, 999, "handled", T0) is False
+    import pytest
+    with pytest.raises(ValueError):
+        close_item(conn, qid, "open", T0)

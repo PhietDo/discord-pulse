@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import message_card, range_selector %}
+{% block title %}Bugs{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Bugs</h1><p class="sub">Bug reports from every channel, grouped by pain point and ranked by it. Unanswered ones are also in the mod queue.</p></div>
+  <div class="form-row">
+    <div class="chips" role="group" aria-label="Filter bugs">
+      <a class="chip" href="/bugs{{ f.qs() }}"{% if not open_only %} aria-current="true"{% endif %}>All</a>
+      <a class="chip" href="/bugs{{ f.qs(open=1) }}"{% if open_only %} aria-current="true"{% endif %}>No staff reply</a>
+    </div>
+    {{ range_selector(f, "/bugs", {"open": 1 if open_only else ""}) }}
+  </div>
+</div>
+<div class="bug-groups">
+{% for g in groups %}
+  <section class="panel bug-group">
+    <h3>{{ g.name }} <span class="pill kind">{{ g.count }} {{ 'report' if g.count == 1 else 'reports' }}</span>
+      {% if g.unanswered %}<span class="pill unanswered">{{ g.unanswered }} without staff reply</span>{% else %}<span class="pill ok">all answered</span>{% endif %}</h3>
+    <p class="pmeta">{{ g.people }} {{ 'person' if g.people == 1 else 'people' }} · first {{ g.first|age(now) }} · latest {{ g.latest|age(now) }}
+      {% if g.theme_id %} · <a href="/pain{{ f.qs(theme=g.theme_id) }}">pain point</a>{% endif %}</p>
+    <div class="msgs">
+      {% for m in g.cards %}{{ message_card(m, now, f, reason='unanswered' if m.message_id in g.unanswered_ids else None) }}{% endfor %}
+    </div>
+    {% if g.more %}<p class="pmeta" style="margin-top:8px"><a href="/messages{{ f.qs(kind='bug', theme=g.theme_id or '') }}">{{ g.more }} more</a></p>{% endif %}
+  </section>
+{% else %}
+  <p class="empty">No bug reports in this window{% if open_only %} without a staff reply{% endif %}.</p>
+{% endfor %}
+</div>
+{% endblock %}

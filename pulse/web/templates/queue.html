@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import message_card %}
+{% block title %}Mod queue{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Mod queue</h1><p class="sub">Frustrated users first, then most likely to need a reply, oldest first. Items close by themselves when staff reply in the thread.</p></div>
+  <div class="chips" role="group" aria-label="Filter queue">
+    <a class="chip" href="/queue{{ f.qs() }}"{% if not reason %} aria-current="true"{% endif %}>All</a>
+    <a class="chip" href="/queue{{ f.qs(reason='frustrated') }}"{% if reason == 'frustrated' %} aria-current="true"{% endif %}>Frustrated</a>
+    <a class="chip" href="/queue{{ f.qs(reason='unanswered') }}"{% if reason == 'unanswered' %} aria-current="true"{% endif %}>Unanswered</a>
+  </div>
+</div>
+<div class="msgs">
+{% for m in items %}
+  {% call message_card(m, now, f, reason=m.reason) %}
+  <form class="actions" method="post" action="/queue/{{ m.queue_id }}/close{{ f.qs() }}"
+        hx-post="/queue/{{ m.queue_id }}/close{{ f.qs() }}" hx-target="#msg-{{ m.message_id }}" hx-swap="outerHTML">
+    <button class="btn" type="submit" name="action" value="handled">Mark handled</button>
+    <button class="btn" type="submit" name="action" value="dismissed">Dismiss</button>
+  </form>
+  {% endcall %}
+{% else %}
+  <p class="empty">Nothing is waiting for a reply.</p>
+{% endfor %}
+</div>
+{% endblock %}

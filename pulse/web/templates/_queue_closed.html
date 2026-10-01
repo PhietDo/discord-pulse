@@ -1,0 +1,7 @@
+<article class="msg done" id="msg-{{ m.message_id }}">
+  <div class="av" style="background:{{ m.author|avatar_color }}" aria-hidden="true">{{ m.author[:1]|upper }}</div>
+  <div>
+    <p class="mtext" role="status">{{ 'Marked handled' if action == 'handled' else 'Dismissed' }}: {{ m.author }} in #{{ m.channel }}</p>
+    <div class="mfoot"><a href="{{ m.link }}" target="_blank" rel="noopener">Open in Discord ↗</a></div>
+  </div>
+</article>

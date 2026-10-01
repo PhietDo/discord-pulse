@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from pulse.web import fmt
 from pulse.web.settings import WebSettings
-from pulse.web.views import overview, pain
+from pulse.web.views import bugs, overview, pain, queue
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -25,6 +25,6 @@ def create_app(settings: WebSettings) -> FastAPI:
     )
     app.state.templates = templates
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    for module in (overview, pain):
+    for module in (overview, pain, bugs, queue):
         app.include_router(module.router)
     return app
