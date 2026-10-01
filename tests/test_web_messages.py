@@ -39,3 +39,8 @@ def test_messages_bad_params(tmp_path):
 def test_messages_second_page_is_empty_with_previous_link(tmp_path):
     html = make_client(tmp_path).get("/messages?page=2").text
     assert "No messages match" in html and "Previous" in html
+
+
+def test_messages_huge_page_is_empty(tmp_path):
+    r = make_client(tmp_path).get("/messages?page=" + "9" * 30)
+    assert r.status_code == 200 and "No messages match" in r.text

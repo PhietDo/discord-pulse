@@ -7,6 +7,7 @@ from pulse.web.deps import get_conn, get_filters, render
 from pulse.web.filters import Filters
 
 router = APIRouter()
+MAX_PAGE = 10000
 
 
 def _int(value: str | None) -> int | None:
@@ -28,7 +29,7 @@ def messages(
     conn=Depends(get_conn),
     f: Filters = Depends(get_filters),
 ):
-    page_no = max(_int(page) or 1, 1)
+    page_no = min(max(_int(page) or 1, 1), MAX_PAGE)
     theme_id = _int(theme)
     kind = kind if kind in KINDS else None
     mood = mood if mood in queries.MOODS else None
