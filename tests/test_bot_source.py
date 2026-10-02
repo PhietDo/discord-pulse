@@ -152,3 +152,14 @@ def test_bot_source_fetch_passes_last_seen_and_default_window():
 def test_invite_url_requests_read_only_permissions():
     assert BOT_PERMISSIONS == 66560
     assert invite_url("123") == "https://discord.com/oauth2/authorize?client_id=123&scope=bot&permissions=66560"
+
+
+def test_catch_up_since_rewinds_channels_seen_after_a_disconnect():
+    from pulse.sources.bot_source import catch_up_since
+
+    gone = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    seen = {"before": gone - timedelta(hours=1), "after": gone + timedelta(minutes=5)}
+    assert catch_up_since(seen, None) == seen
+    out = catch_up_since(seen, gone)
+    assert out == {"before": gone - timedelta(hours=1), "after": gone - timedelta(seconds=60)}
+    assert catch_up_since(seen, gone, overlap=timedelta(0))["after"] == gone

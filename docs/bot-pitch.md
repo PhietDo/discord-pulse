@@ -7,7 +7,7 @@ Discord Pulse helps the community team see how people feel about the product and
 ## What the bot does and does not do
 
 - It reads messages in the channels it can see.
-- It never posts, replies, reacts, sends DMs, edits, deletes, pins, or changes any setting. It has no permission to do any of that.
+- It never posts, replies, reacts, sends DMs, edits, deletes, pins, or changes any setting. The invite asks only for read access and the code never calls a write action. A bot also gets the server's @everyone permissions, so to have Discord enforce read-only, deny Send Messages and Add Reactions to the bot's role.
 - It does not read private channels or private threads unless you give it access to them.
 
 ## Exactly what access it asks for
@@ -22,6 +22,9 @@ You decide which channels it reads through normal channel permissions. The team 
 
 - Messages are stored in a database file on the community lead's computer. Nothing is hosted on a server.
 - To label each message, its text is sent to the AI provider the team has configured: Anthropic, OpenAI, or OpenRouter (which forwards it to the chosen model's provider). Anthropic's and OpenAI's APIs do not train on API data by default; for OpenRouter, the chosen provider's policy applies.
+- If the team turns on the Jev classifier, each message's text is also sent to Jev (through OpenRouter) for a first-pass label.
+- When the community lead chooses to send a pain point to GitHub or Linear, the issue includes short message excerpts and links to the messages, never author names. If the repo is public, so are those excerpts.
+- If Slack alerts are turned on, an alert includes a short excerpt and, for unanswered frustrated messages, the author's display name, posted to the team's Slack.
 - The dashboard runs on that computer only and is not reachable from the internet.
 
 ## How to remove it

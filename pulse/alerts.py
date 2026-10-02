@@ -67,12 +67,13 @@ def find_alerts(conn: sqlite3.Connection, config: Config, now: datetime) -> list
             text += f"\n> {_esc(_excerpt(top[0]['content']))} <{_link(conn, top[0]['message_id'])}|Open in Discord>"
         out.append(Alert("spike", key, text))
     cutoff = to_iso(now - timedelta(hours=cfg.frustrated_hours))
+    oldest = to_iso(now - timedelta(hours=cfg.frustrated_hours + 24))
     rows = conn.execute(
         "SELECT q.id, m.id AS message_id, m.thread_id, m.channel_name, m.author_name, m.content, m.created_at"
         " FROM mod_queue q JOIN messages m ON m.id = q.message_id"
-        " WHERE q.status = 'open' AND q.reason = 'frustrated' AND m.created_at <= ?"
+        " WHERE q.status = 'open' AND q.reason = 'frustrated' AND m.created_at <= ? AND m.created_at >= ?"
         " ORDER BY m.created_at, q.id",
-        (cutoff,),
+        (cutoff, oldest),
     ).fetchall()
     for r in rows:
         key = str(r["id"])

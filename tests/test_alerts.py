@@ -130,3 +130,8 @@ def test_alerts_config_rejects_bool_numeric_fields(tmp_path, monkeypatch, field)
     path.write_text(CONFIG + f"\n[alerts]\nenabled = true\n{field} = true\n")
     with pytest.raises(ConfigError, match="not true/false"):
         load_config(path)
+
+
+def test_frustrated_alerts_ignore_items_older_than_the_lookback():
+    assert [a.kind for a in find_alerts(seed(frustrated_age_hours=240), CFG, NOW)] == ["spike"]
+    assert [a.kind for a in find_alerts(seed(frustrated_age_hours=13), CFG, NOW)] == ["spike", "frustrated"]

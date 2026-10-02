@@ -136,3 +136,11 @@ def test_pitch_doc_states_the_exact_access():
         assert phrase in pitch
     readme = Path("README.md").read_text()
     assert "ingest --source bot" in readme and "docs/bot-pitch.md" in readme
+
+
+def test_pitch_doc_discloses_every_data_destination():
+    pitch = Path("docs/bot-pitch.md").read_text()
+    for phrase in ("deny Send Messages and Add Reactions", "@everyone", "Jev (through OpenRouter)",
+                   "GitHub or Linear", "never author names", "Slack alerts", "display name"):
+        assert phrase in pitch
+    assert "It has no permission to do any of that." not in pitch

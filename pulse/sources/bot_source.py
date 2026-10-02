@@ -71,6 +71,17 @@ def last_seen(conn: sqlite3.Connection) -> dict[str, datetime]:
     }
 
 
+def catch_up_since(seen: dict[str, datetime], disconnected_at: datetime | None,
+                   overlap: timedelta = timedelta(seconds=60)) -> dict[str, datetime]:
+    """Where to resume each channel after a reconnect. Live messages that arrived just before
+    the disconnect may be ahead of ones missed in another channel, so rewind to the disconnect
+    (minus an overlap); re-reading a message is harmless because writes are upserts."""
+    if disconnected_at is None:
+        return seen
+    cap = disconnected_at - overlap
+    return {cid: min(value, cap) for cid, value in seen.items()}
+
+
 async def _history(target, after: datetime, guild_id: str, out: list[Message], errors: list[str], label: str) -> None:
     try:
         async for raw in target.history(after=after, oldest_first=True, limit=None):

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from pulse.config import Config
 from pulse.models import Message
-from pulse.sources.bot_source import FLUSH_SECONDS, BotStreamer, backfill
+from pulse.sources.bot_source import FLUSH_SECONDS, BotStreamer, backfill, catch_up_since
 
 
 def intents():
@@ -58,7 +58,7 @@ def run_streamer(token: str, config: Config, conn, *, log=print) -> BotStreamer:
     client = discord.Client(intents=intents())
     streamer = BotStreamer(conn, config)
     errors: list[str] = []
-    state = {"flusher": None}
+    state = {"flusher": None, "disconnected_at": None}
 
     async def flush_forever():
         while True:
@@ -75,17 +75,23 @@ def run_streamer(token: str, config: Config, conn, *, log=print) -> BotStreamer:
             log(f"bot: not in server {config.guild_id}; see python -m pulse.run bot-invite")
             await client.close()
             return
+        if state["flusher"] is None:
+            state["flusher"] = asyncio.create_task(flush_forever())
         # on_ready fires again after a reconnect, so this also catches up on anything missed.
         default_since = datetime.now(timezone.utc) - timedelta(days=config.bot_backfill_days)
-        since = await asyncio.to_thread(streamer.since)
+        since = catch_up_since(await asyncio.to_thread(streamer.since), state["disconnected_at"])
+        state["disconnected_at"] = None
         caught_up = await backfill(guild, config, since, default_since, errors)
         streamer.add_many(caught_up)
         for e in errors:
             log(f"bot: {e}")
         errors.clear()
         log(f"bot: connected to {guild.name}; caught up on {len(caught_up)} messages; streaming")
-        if state["flusher"] is None:
-            state["flusher"] = asyncio.create_task(flush_forever())
+
+    @client.event
+    async def on_disconnect():
+        if state["disconnected_at"] is None:
+            state["disconnected_at"] = datetime.now(timezone.utc)
 
     @client.event
     async def on_message(message):

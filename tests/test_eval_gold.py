@@ -89,3 +89,14 @@ def test_score_perfect_and_empty_cases():
 
 def test_macro_f1_averages_gold_kinds_only():
     assert macro_f1([("bug", "bug"), ("bug", "docs")]) == pytest.approx(2 / 3)
+
+
+def test_gold_labels_and_logs_are_git_ignored():
+    import subprocess
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    for path in ("eval/gold.jsonl", "logs/x.log"):
+        assert subprocess.run(["git", "check-ignore", "-q", path], cwd=root).returncode == 0, path
+    example = subprocess.run(["git", "check-ignore", "-q", "eval/gold.example.jsonl"], cwd=root)
+    assert example.returncode == 1
