@@ -183,9 +183,12 @@ class Toolbox:
         rows = self.conn.execute(
             "SELECT m.id, m.author_name, m.is_team, m.is_bot, m.created_at, m.content FROM messages m"
             " WHERE m.id = ? OR m.thread_id = ? OR m.reply_to_id = ?"
-            " ORDER BY m.created_at, m.id LIMIT ?",
-            (mid, thread, mid, THREAD_LIMIT),
+            " ORDER BY m.created_at, m.id LIMIT 1000",
+            (mid, thread, mid),
         ).fetchall()
+        at = next((i for i, r in enumerate(rows) if r["id"] == mid), 0)
+        start = max(0, min(at - THREAD_LIMIT // 2, len(rows) - THREAD_LIMIT))
+        rows = rows[start:start + THREAD_LIMIT]
         results = [
             {"message_id": r["id"], "author": r["author_name"], "is_team": bool(r["is_team"]),
              "is_bot": bool(r["is_bot"]), "created_at": r["created_at"], "content": _clip(r["content"])}

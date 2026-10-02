@@ -203,3 +203,14 @@ def test_search_text_wildcards_are_literal():
     box = Toolbox(conn, NOW)
     assert [m["message_id"] for m in json.loads(box.execute(call("search_messages", text="%")))] == ["pc"]
     assert json.loads(box.execute(call("search_messages", text="a_th"))) == []
+
+
+def test_get_thread_includes_message_deep_in_a_busy_thread():
+    conn = connect(":memory:")
+    rows = [msg(f"m{i:02d}", f"reply {i}", minutes=i, channel_id="300", thread_id="300") for i in range(60)]
+    upsert_messages(conn, rows, frozenset())
+    box = Toolbox(conn, T0 + timedelta(days=1))
+    result = json.loads(box.execute(ToolCall("1", "get_thread", {"message_id": "m50"})))
+    ids = [r["message_id"] for r in result]
+    assert "m50" in ids and len(ids) <= 30
+    assert ids == sorted(ids)  # oldest first

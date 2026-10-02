@@ -36,6 +36,22 @@ Re-importing is safe: messages are keyed on Discord's message id, and edited mes
 
 Spending is capped by `[budget] daily_usd_cap`; once reached, agent calls stop for the day and the run says so. The cap resets at UTC midnight.
 
+## Dashboard
+
+```bash
+python -m pulse.run web              # http://127.0.0.1:8321, reads pulse.toml, agents on
+python -m pulse.run seed-demo        # writes demo.db: a synthetic community, no keys needed
+python -m pulse.run web --demo       # serves demo.db with agents off (good for pitching)
+```
+
+Views: Overview, Pain points, Bugs, Mod queue, Messages, Launch, Reports, Runs. Every view takes a window (7, 14, 30 or 90 days) and a channel; a channel includes its threads. Every message shows its author and an "Open in Discord" link, and "All from <author>" lists everything that person said.
+
+- **Reply times**: median minutes to the first staff reply and how many messages have waited more than 24 hours, overall and per channel.
+- **Pain point status**: mark a pain point Acknowledged, Fix in progress or Fix shipped with a note. Once shipped, the view compares volume and sentiment before and after.
+- **Investigate and digests from the dashboard** run in the background and the page updates when they finish. They spend from the same daily cap as the pipeline; the Runs view shows every call and its cost.
+- Messages imported before this version count under their own thread id when you filter by channel; re-run `ingest` once to attach threads to their parent channel.
+- The dashboard has no login. It binds to 127.0.0.1 by default; don't expose it to the internet.
+
 ## Jev first pass (optional)
 
 With `[classifier] enabled = true`, triage asks Jev (a cheap closed-set classifier, via OpenRouter) about every message first. Confident, low-stakes messages are labelled by Jev alone; anything negative, likely to need a reply, a bug, docs issue, feature request or praise, or low-confidence, still goes to the triage LLM for full labels and topics. Staff messages are always neutral. If Jev fails on a message, the LLM handles it.

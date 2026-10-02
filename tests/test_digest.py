@@ -177,3 +177,21 @@ def test_digest_stores_removed_citations():
     result = run_digest(conn, make_llm(conn, make_config(), FakeBackend(handler=cite_first_and_bogus)), NOW)
     row = conn.execute("SELECT removed_citations FROM digests WHERE id = ?", (result.digest_id,)).fetchone()
     assert json.loads(row["removed_citations"]) == ["bogus"]
+
+
+def test_weekly_digest_not_skipped_when_only_old_queue_items_are_open():
+    from pulse.models import to_iso
+
+    conn = connect(":memory:")
+    old = NOW - timedelta(days=10)
+    upsert_messages(conn, [msg("old", "still broken", minutes=(old - T0).total_seconds() / 60)], frozenset())
+    set_triage(conn, "old", sentiment=-2, needs_reply=True, kind="bug")
+    with conn:
+        conn.execute(
+            "INSERT INTO mod_queue (queue_key, message_id, reason, status, opened_at) VALUES ('old', 'old', 'frustrated', 'open', ?)",
+            (to_iso(old),),
+        )
+    backend = FakeBackend(handler=lambda user: BackendResult({"markdown": "## Needs attention\n[[msg:old]]"}, 10, 5))
+    result = run_digest(conn, make_llm(conn, make_config(), backend), NOW)
+    assert len(backend.calls) == 1
+    assert result.cited_message_ids == ["old"]

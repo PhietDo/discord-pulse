@@ -138,7 +138,7 @@ def run_digest(
     if launch is None:
         data = build_weekly_input(conn, now)
         period = (data["period"]["start"], data["period"]["end"])
-        activity = data["current"]["messages"]
+        activity = data["current"]["messages"] + sum(1 for m in data["messages"] if "queue_reason" in m)
     else:
         row = conn.execute("SELECT * FROM launches WHERE name = ?", (launch,)).fetchone()
         if row is None:
