@@ -36,6 +36,20 @@ def scope_clause(channels: tuple[str, ...] | None) -> tuple[str, list]:
     return f" AND (m.channel_id IN ({marks}) OR m.parent_channel_id IN ({marks}))", [*channels, *channels]
 
 
+def theme_clause(conn: sqlite3.Connection, theme_id: int | None) -> tuple[str, list] | None:
+    """SQL limiting messages `m` to a pain point, merged themes included.
+
+    ("", []) when theme_id is None; None when the theme is unknown.
+    """
+    if theme_id is None:
+        return "", []
+    ids = theme_member_ids(conn, theme_id)
+    if not ids:
+        return None
+    marks = ",".join("?" * len(ids))
+    return f" AND m.id IN (SELECT message_id FROM message_themes WHERE theme_id IN ({marks}))", ids
+
+
 def top_channels(conn: sqlite3.Connection) -> list[dict]:
     """Top-level channels (not threads) that have messages, busiest first."""
     rows = conn.execute(
@@ -80,13 +94,20 @@ def theme_member_ids(conn: sqlite3.Connection, theme_id: int) -> list[int]:
 
 
 def period_summary(
-    conn: sqlite3.Connection, start: datetime, end: datetime, *, channels: tuple[str, ...] | None = None
+    conn: sqlite3.Connection,
+    start: datetime,
+    end: datetime,
+    *,
+    channels: tuple[str, ...] | None = None,
+    theme_id: int | None = None,
 ) -> dict:
     scope, scope_params = scope_clause(channels)
+    theme = theme_clause(conn, theme_id)
+    theme_sql, theme_params = theme if theme is not None else (" AND 0", [])
     rows = conn.execute(
         "SELECT t.sentiment, t.kind, t.needs_reply FROM messages m JOIN triage t ON t.message_id = m.id"
-        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?{scope}",
-        (to_iso(start), to_iso(end), *scope_params),
+        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?{scope}{theme_sql}",
+        (to_iso(start), to_iso(end), *scope_params, *theme_params),
     ).fetchall()
     n = len(rows)
     by_kind = {k: 0 for k in KINDS}
@@ -104,14 +125,21 @@ def period_summary(
 
 
 def sentiment_series(
-    conn: sqlite3.Connection, start: datetime, end: datetime, *, channels: tuple[str, ...] | None = None
+    conn: sqlite3.Connection,
+    start: datetime,
+    end: datetime,
+    *,
+    channels: tuple[str, ...] | None = None,
+    theme_id: int | None = None,
 ) -> list[dict]:
     scope, scope_params = scope_clause(channels)
+    theme = theme_clause(conn, theme_id)
+    theme_sql, theme_params = theme if theme is not None else (" AND 0", [])
     rows = conn.execute(
         "SELECT substr(m.created_at, 1, 10) AS day, COUNT(*) AS n, AVG(t.sentiment) AS avg"
         " FROM messages m JOIN triage t ON t.message_id = m.id"
-        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?{scope} GROUP BY day",
-        (to_iso(start), to_iso(end), *scope_params),
+        f" WHERE {_COMMUNITY} AND m.created_at >= ? AND m.created_at < ?{scope}{theme_sql} GROUP BY day",
+        (to_iso(start), to_iso(end), *scope_params, *theme_params),
     ).fetchall()
     by_day = {r["day"]: r for r in rows}
     out = []

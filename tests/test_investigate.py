@@ -160,6 +160,42 @@ def test_non_object_arguments_are_a_tool_error():
         Toolbox(conn, NOW).execute(ToolCall("c", "search_messages", ["auth"]))
 
 
+def test_run_investigation_fills_existing_row_and_stores_removed():
+    from pulse.models import to_iso
+
+    conn, _ = seed()
+    with conn:
+        conn.execute("INSERT INTO investigations (id, question, context, created_at) VALUES (7, 'why?', '{}', ?)",
+                     (to_iso(NOW),))
+    backend = FakeBackend(steps=[StepResult("Because [[msg:ghost]].", (), 10, 5)])
+    result = run_investigation(conn, make_llm(conn, make_config(), backend), "why?", NOW, investigation_id=7)
+    assert result.investigation_id == 7
+    row = conn.execute("SELECT * FROM investigations WHERE id = 7").fetchone()
+    assert json.loads(row["removed_citations"]) == ["ghost"] and row["markdown"] == "Because ."
+    assert conn.execute("SELECT COUNT(*) FROM investigations").fetchone()[0] == 1
+    with pytest.raises(LookupError):
+        run_investigation(conn, make_llm(conn, make_config(), backend), "why?", NOW, investigation_id=99)
+
+
+def test_query_stats_scopes_by_theme_and_channel():
+    conn = connect(":memory:")
+    upsert_messages(conn, [msg("a", "x", minutes=0, channel_id="100"), msg("b", "y", minutes=1, channel_id="200")],
+                    frozenset())
+    set_triage(conn, "a", sentiment=-2)
+    set_triage(conn, "b", sentiment=2)
+    tid, _ = create_theme(conn, "install", "", T0)
+    assign(conn, "a", tid)
+    box = Toolbox(conn, T0 + timedelta(hours=1))
+    by_theme = json.loads(box.execute(ToolCall("1", "query_stats", {"metric": "period_summary", "theme_id": tid})))
+    assert by_theme["messages"] == 1 and by_theme["avg_sentiment"] == -2.0
+    by_channel = json.loads(box.execute(ToolCall("2", "query_stats", {"metric": "period_summary", "channel_id": "200"})))
+    assert by_channel["messages"] == 1 and by_channel["avg_sentiment"] == 2.0
+    with pytest.raises(ToolError):
+        box.execute(ToolCall("3", "query_stats", {"metric": "period_summary", "theme_id": 999}))
+    with pytest.raises(ToolError):
+        box.execute(ToolCall("4", "query_stats", {"metric": "period_summary", "channel_id": 5}))
+
+
 def test_search_text_wildcards_are_literal():
     conn, _ = seed()
     upsert_messages(conn, [msg("pc", "50% of builds fail", minutes=11)], frozenset())

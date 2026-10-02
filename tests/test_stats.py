@@ -272,6 +272,20 @@ def test_channel_breakdown_per_top_level_channel():
     assert general["median_reply_minutes"] is None
 
 
+def test_period_summary_and_series_scope_by_theme():
+    conn = _channel_db()
+    with conn:
+        conn.execute("INSERT INTO themes (id, name, created_at) VALUES (1, 'install', ?)", (to_iso(T0),))
+        conn.execute("INSERT INTO themes (id, name, status, merged_into, created_at) VALUES (2, 'm1', 'merged', 1, ?)", (to_iso(T0),))
+        conn.execute("INSERT INTO message_themes (message_id, theme_id) VALUES ('h1', 1), ('g1', 2)")
+    s = stats.period_summary(conn, START, END, theme_id=1)
+    assert s["messages"] == 2  # g1 is in a theme merged into 1
+    assert stats.period_summary(conn, START, END, theme_id=1, channels=("200",))["messages"] == 1
+    assert stats.period_summary(conn, START, END, theme_id=99)["messages"] == 0
+    day = T0.replace(hour=0)
+    assert stats.sentiment_series(conn, day, day + timedelta(days=1), theme_id=1)[0]["messages"] == 2
+
+
 def test_reply_after_now_is_not_answered():
     conn = connect(":memory:")
     team = frozenset({"t1"})

@@ -60,7 +60,14 @@
     <div class="mix-legend" style="margin:0 0 14px">{% for k, n in sel.kinds.items() %}<span>{{ k|kind_label }}<b>{{ n }}</b></span>{% endfor %}</div>
     {% else %}<p class="empty">No messages in the last 7 days.</p>{% endif %}
     <p><a href="/messages{{ f.qs(theme=sel.id) }}">All messages in this pain point</a> · <a href="/bugs{{ f.qs() }}">Bugs</a></p>
-    {% block ask_why %}{% endblock %}
+    <div class="panel-head" style="margin-top:18px"><h2>Ask why</h2></div>
+    <form class="evidence" method="post" action="/investigations{{ f.qs() }}">
+      <p class="mut" style="margin:0">Investigate reads stats and messages with read-only tools and answers in a few sentences. Every claim links to the messages it used.</p>
+      <input type="hidden" name="theme_id" value="{{ sel.id }}">
+      <textarea id="inv-q" name="question" maxlength="500" aria-label="Question">Why is "{{ sel.name }}" a pain point right now, and what would fix it?</textarea>
+      {% if agents_on %}<button class="btn primary" type="submit" style="align-self:flex-start">Investigate</button>
+      {% else %}<button class="btn" type="button" disabled style="align-self:flex-start">Investigate</button><span class="pmeta">{{ agents_off_text }}</span>{% endif %}
+    </form>
   </section>
 </div>
 {% endif %}

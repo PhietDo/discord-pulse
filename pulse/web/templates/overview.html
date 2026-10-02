@@ -26,6 +26,11 @@
       <div class="panel-head"><h2 id="h-chart">Sentiment and volume</h2><span class="note">daily average, −2 to +2 scale</span></div>
       <div class="chart-wrap">{{ chart }}</div>
       <div class="legend"><span><i style="background:var(--accent)"></i>avg sentiment</span><span><i style="background:var(--line);height:8px"></i>messages per day</span><span><i style="background:var(--warn)"></i>launch</span></div>
+      <form class="form-row" method="post" action="/investigations{{ f.qs() }}" style="margin-top:12px">
+        <input type="hidden" name="question" value="What changed in community sentiment over the last {{ f.days }} days, and why?">
+        {% if agents_on %}<button class="btn" type="submit">Ask why sentiment changed</button>
+        {% else %}<button class="btn" type="button" disabled title="{{ agents_off_text }}">Ask why sentiment changed</button>{% endif %}
+      </form>
     </section>
     <section class="panel" aria-labelledby="h-where">
       <div class="panel-head"><h2 id="h-where">Where it's coming from</h2><span class="note">last {{ f.days }} days · community messages</span></div>

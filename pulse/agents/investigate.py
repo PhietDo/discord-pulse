@@ -23,13 +23,16 @@ _DATE = {"type": "string", "description": "YYYY-MM-DD (UTC)"}
 TOOLS = [
     ToolSpec(
         "query_stats",
-        "Aggregate statistics for a date range [start, end). metric: period_summary (message count, average "
+        "Aggregate statistics for a date range [start, end), optionally for one pain point (theme_id) or one "
+        "channel and its threads (channel_id). metric: period_summary (message count, average "
         "sentiment, negatives, needs-reply, counts by kind), sentiment_series (per day), theme_scores (pain "
         "points ranked, for the window ending at end), queue_counts (open mod queue items). Defaults: end = "
         "tomorrow, start = 7 days before end.",
         {"type": "object", "properties": {
             "metric": {"type": "string", "enum": ["period_summary", "sentiment_series", "theme_scores", "queue_counts"]},
             "start": _DATE, "end": _DATE,
+            "theme_id": {"type": "integer"},
+            "channel_id": {"type": "string"},
         }, "required": ["metric"]},
     ),
     ToolSpec(
@@ -108,13 +111,20 @@ class Toolbox:
     def query_stats(self, args: dict):
         metric = args.get("metric")
         start, end = self._range(args)
+        theme_id = self._int(args, "theme_id")
+        if theme_id is not None and not stats.theme_member_ids(self.conn, theme_id):
+            raise ToolError(f"no theme {theme_id}")
+        channel_id = args.get("channel_id")
+        if channel_id is not None and (not isinstance(channel_id, str) or not channel_id):
+            raise ToolError("channel_id must be a non-empty string")
+        channels = (channel_id,) if channel_id else None
         if metric == "period_summary":
-            return stats.period_summary(self.conn, start, end)
+            return stats.period_summary(self.conn, start, end, channels=channels, theme_id=theme_id)
         if metric == "sentiment_series":
-            return stats.sentiment_series(self.conn, start, end)
+            return stats.sentiment_series(self.conn, start, end, channels=channels, theme_id=theme_id)
         if metric == "theme_scores":
             window = max(1, (end - start).days)
-            return [asdict(s) for s in stats.theme_scores(self.conn, end, window_days=window)]
+            return [asdict(s) for s in stats.theme_scores(self.conn, end, window_days=window, channels=channels)]
         if metric == "queue_counts":
             return stats.queue_counts(self.conn)
         raise ToolError(f"unknown metric {metric!r}")
@@ -199,17 +209,28 @@ def load_prompt() -> str:
 
 
 def run_investigation(
-    conn: sqlite3.Connection, llm: LLMClient, question: str, now: datetime, *, context: dict | None = None
+    conn: sqlite3.Connection,
+    llm: LLMClient,
+    question: str,
+    now: datetime,
+    *,
+    context: dict | None = None,
+    investigation_id: int | None = None,
 ) -> InvestigationResult:
     question = question.strip()
     if not question:
         raise ValueError("question is empty")
     context = context or {}
-    with conn:
-        inv_id = int(conn.execute(
-            "INSERT INTO investigations (question, context, created_at) VALUES (?, ?, ?)",
-            (question, json.dumps(context), to_iso(now)),
-        ).lastrowid)
+    if investigation_id is None:
+        with conn:
+            inv_id = int(conn.execute(
+                "INSERT INTO investigations (question, context, created_at) VALUES (?, ?, ?)",
+                (question, json.dumps(context), to_iso(now)),
+            ).lastrowid)
+    else:
+        if conn.execute("SELECT 1 FROM investigations WHERE id = ?", (investigation_id,)).fetchone() is None:
+            raise LookupError(f"no investigation {investigation_id}")
+        inv_id = investigation_id
     toolbox = Toolbox(conn, now)
     user = json.dumps({"question": question, "context": context, "today": now.date().isoformat()})
     try:
@@ -231,7 +252,8 @@ def run_investigation(
     cited = cited_ids(markdown)
     with conn:
         conn.execute(
-            "UPDATE investigations SET markdown = ?, cited_message_ids = ?, run_id = ? WHERE id = ?",
-            (markdown, json.dumps(cited), resp.run_id, inv_id),
+            "UPDATE investigations SET markdown = ?, cited_message_ids = ?, removed_citations = ?, run_id = ?"
+            " WHERE id = ?",
+            (markdown, json.dumps(cited), json.dumps(removed), resp.run_id, inv_id),
         )
     return InvestigationResult(inv_id, markdown, cited, removed, resp.tool_calls)

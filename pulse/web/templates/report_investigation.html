@@ -11,7 +11,7 @@
   <p class="banner" role="status">Investigating. This usually takes under a minute; the page updates by itself.</p>
 </div>
 {% elif state == 'failed' %}
-<div id="inv-body"><p class="banner err" role="status">{{ inv.markdown }}</p></div>
+<div id="inv-body"><p class="banner err" role="status">{{ failure }}</p></div>
 {% else %}
 <div id="inv-body" class="grid2">
   <section class="panel"><div class="report">{{ html }}</div>

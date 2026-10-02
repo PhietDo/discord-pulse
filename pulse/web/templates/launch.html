@@ -34,6 +34,12 @@
   </div>
   <div class="chart-wrap">{{ chart }}</div>
   {% if latest %}<p class="pmeta">Latest launch digest: <a href="/reports/digest/{{ latest.id }}{{ f.qs() }}">{{ latest.created_at|utc }}</a></p>{% endif %}
+  <form class="form-row" method="post" action="/investigations{{ f.qs() }}" style="margin-top:12px">
+    <input type="hidden" name="launch" value="{{ sel.name }}">
+    <input type="hidden" name="question" value="How did {{ sel.name }} land, and what are people stuck on since launch?">
+    {% if agents_on %}<button class="btn" type="submit">Ask about this launch</button>
+    {% else %}<button class="btn" type="button" disabled title="{{ agents_off_text }}">Ask about this launch</button>{% endif %}
+  </form>
 </section>
 <div class="grid2">
   <section class="panel"><div class="panel-head"><h2>Messages about the launch</h2><span class="note">keywords: {{ data.launch.keywords|join(', ') }}</span></div>
