@@ -64,6 +64,18 @@ List the mod queue, highest priority first, with links to each message:
 .venv/bin/python -m pulse.run queue --limit 20
 ```
 
+## Accuracy check
+
+`python -m pulse.eval` runs triage on a hand-labelled set and reports, per model: exact sentiment, sentiment within one step, kind macro-F1, needs-reply recall, precision and agreement, messages left unlabelled by failures, and cost. It uses a throwaway in-memory database, so `pulse.db` is never touched, and `--max-usd` (default $1) caps each model's run.
+
+```bash
+.venv/bin/python -m pulse.eval --gold eval/gold.example.jsonl                          # the shipped synthetic set
+.venv/bin/python -m pulse.eval --sample 200 --out eval/gold.jsonl                      # start your own set
+.venv/bin/python -m pulse.eval --model anthropic:claude-haiku-4-5-20251001 --model openai:gpt-5.4-mini --model jev:jev-latest --model hybrid
+```
+
+`--sample` writes random messages from your database with empty labels; fill in `sentiment` (-2 to 2), `kind` and `needs_reply` for each, then run the check. Rows with a `null` label are skipped and counted. Run it before changing a prompt or provider. With the classifier enabled, any `jev:` row below 90% needs-reply agreement prints a recommendation to set `[classifier] enabled = false`.
+
 ## Themes, digests, investigations
 
 ```bash

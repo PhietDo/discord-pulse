@@ -207,3 +207,19 @@ def test_classifier_enabled_must_be_bool(tmp_path):
 def test_llm_agents_still_reject_jev_provider(tmp_path):
     with pytest.raises(ConfigError, match="provider"):
         load_config(write(tmp_path, BASE.replace('theme = "openai:gpt-x"', 'theme = "jev:jev-latest"')), env=ENV)
+
+
+def test_require_keys_false_skips_env_checks(tmp_path):
+    from pulse.config import load_config, missing_keys
+
+    path = tmp_path / "pulse.toml"
+    path.write_text(
+        '[server]\nguild_id = "1"\n[models]\ntriage = "openai:t"\ntheme = "openai:t"\n'
+        'digest = "anthropic:d"\ninvestigate = "openai:t"\n'
+        '[pricing."openai:t"]\ninput = 1\noutput = 2\n[pricing."anthropic:d"]\ninput = 1\noutput = 2\n'
+        '[classifier]\nenabled = true\n'
+    )
+    config = load_config(path, {}, require_keys=False)
+    assert config.classifier.enabled
+    assert missing_keys(config, {"OPENAI_API_KEY": "x"}) == ["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"]
+    assert missing_keys(config, {"OPENAI_API_KEY": "x", "ANTHROPIC_API_KEY": "y", "OPENROUTER_API_KEY": "z"}) == []

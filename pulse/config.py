@@ -118,7 +118,7 @@ def _unit_interval(name: str, value: Any) -> float:
     return v
 
 
-def _classifier(raw: Any, env: Mapping[str, str]) -> ClassifierConfig | None:
+def _classifier(raw: Any, env: Mapping[str, str], require_keys: bool = True) -> ClassifierConfig | None:
     if not raw:
         return None
     model = ModelRef.parse(str(raw.get("model", "jev:jev-latest")), CLASSIFIER_PROVIDERS)
@@ -136,12 +136,12 @@ def _classifier(raw: Any, env: Mapping[str, str]) -> ClassifierConfig | None:
         min_confidence=_unit_interval("min_confidence", raw.get("min_confidence", 0.6)),
         escalate_kinds=kinds,
     )
-    if cfg.enabled and not env.get(KEY_ENV[model.provider]):
+    if require_keys and cfg.enabled and not env.get(KEY_ENV[model.provider]):
         raise ConfigError(f"{KEY_ENV[model.provider]} must be set because the classifier {model} is enabled")
     return cfg
 
 
-def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Config:
+def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, require_keys: bool = True) -> Config:
     path = Path(path)
     env = os.environ if env is None else env
     try:
@@ -167,7 +167,7 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Confi
 
     for ref in models.values():
         var = KEY_ENV[ref.provider]
-        if not env.get(var):
+        if require_keys and not env.get(var):
             raise ConfigError(f"{var} must be set because {ref} is configured")
         if ref.provider != "openrouter" and str(ref) not in pricing:
             raise ConfigError(f'[pricing."{ref}"] is required so the budget cap can be enforced')
@@ -187,5 +187,14 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Confi
         launches=tuple(_launch(l) for l in raw.get("launches", [])),
         db_path=base / paths.get("db", "pulse.db"),
         imports_dir=base / paths.get("imports", "imports"),
-        classifier=_classifier(raw.get("classifier"), env),
+        classifier=_classifier(raw.get("classifier"), env, require_keys),
     )
+
+
+def missing_keys(config: Config, env: Mapping[str, str] | None = None) -> list[str]:
+    """Env vars the configured models (and an enabled classifier) need but that are unset."""
+    env = os.environ if env is None else env
+    needed = {KEY_ENV[r.provider] for r in config.models.values()}
+    if config.classifier is not None and config.classifier.enabled:
+        needed.add(KEY_ENV[config.classifier.model.provider])
+    return sorted(v for v in needed if not env.get(v))
