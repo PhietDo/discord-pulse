@@ -50,7 +50,7 @@ def _excerpt(text: str) -> str:
     return one if len(one) <= EXCERPT_CHARS else one[: EXCERPT_CHARS - 1] + "…"
 
 
-_MD_SPECIAL = set("`*_{}[]()#+-.!|<>~")
+_MD_SPECIAL = set("\\`*_{}[]()#+-.!|<>~")
 
 
 def _md_escape(text: str) -> str:

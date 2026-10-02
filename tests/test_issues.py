@@ -2,11 +2,12 @@ import json
 from datetime import timedelta
 
 import httpx
+import markdown
 import pytest
 
 from pulse.config import IntegrationsConfig
 from pulse.db import connect
-from pulse.issues import TrackerError, issue_draft, send_issue, tracker_status
+from pulse.issues import TrackerError, _md_escape, issue_draft, send_issue, tracker_status
 from pulse.links import jump_link
 from pulse.store import upsert_messages
 from pulse.themes import assign, create_theme, merge_themes
@@ -74,6 +75,12 @@ def test_issue_draft_escapes_markdown_injection():
     assert "\\<b\\>" in body
     heading_lines = [line for line in body.splitlines() if line.startswith("###")]
     assert heading_lines == ["### Example messages"]
+
+
+@pytest.mark.parametrize("raw", ["a\\*b*c\\*d*", "a\\`x\\`b"])
+def test_md_escape_defeats_backslash_smuggled_emphasis_and_code(raw):
+    rendered = markdown.markdown(_md_escape(raw))
+    assert "<em>" not in rendered and "<strong>" not in rendered and "<code>" not in rendered
 
 
 def test_send_github_issue_and_store_it():
