@@ -76,6 +76,20 @@ List the mod queue, highest priority first, with links to each message:
 
 `--sample` writes random messages from your database with empty labels; fill in `sentiment` (-2 to 2), `kind` and `needs_reply` for each, then run the check. Rows with a `null` label are skipped and counted. Run it before changing a prompt or provider. With the classifier enabled, any `jev:` row below 90% needs-reply agreement prints a recommendation to set `[classifier] enabled = false`.
 
+## Live bot
+
+When the mod team has added the read-only bot (see `docs/bot-pitch.md` for the one-page pitch and setup), install the extra and set the token:
+
+```bash
+.venv/bin/pip install -e '.[bot]'
+export DISCORD_BOT_TOKEN=...                                   # from the Developer Portal, never in pulse.toml
+.venv/bin/python -m pulse.run bot-invite --client-id <app id>  # the read-only invite link
+.venv/bin/python -m pulse.run ingest --source bot              # one-off catch-up, then exit
+.venv/bin/python -m pulse.run bot                              # catch up, then stream until Ctrl-C
+```
+
+Both read only channels the bot can see, narrowed by `[server] channel_ids`. A channel read for the first time goes back `[bot] backfill_days` (default 30); after that each run continues from the last stored message, so a restart or disconnect never leaves a gap. Edits to messages the bot saw while running replace the old text and re-queue them for triage. `pipeline` and the dashboard work the same whether messages came from exports or the bot.
+
 ## Themes, digests, investigations
 
 ```bash

@@ -35,7 +35,7 @@ from pulse.pipeline import (
     run_pipeline,
 )
 from pulse.store import sync_launches
-from pulse.sources.bot_source import BotSource
+from pulse.sources.bot_source import BotSource, invite_url
 from pulse.sources.file_source import FileSource
 from pulse.web.app import create_app
 from pulse.web.settings import WebSettings
@@ -68,6 +68,9 @@ def _parser() -> argparse.ArgumentParser:
     web.add_argument("--demo", action="store_true", help="serve the demo database; no pulse.toml or API keys needed")
     seed = sub.add_parser("seed-demo", help="write a synthetic community to a demo database")
     seed.add_argument("--db", default="demo.db")
+    sub.add_parser("bot", help="run the read-only bot: catch up, then stream new messages (Ctrl-C to stop)")
+    invite = sub.add_parser("bot-invite", help="print the invite link that asks only for read access")
+    invite.add_argument("--client-id", required=True, help="the Application ID from the Discord Developer Portal")
     return parser
 
 
@@ -114,6 +117,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "triage" and args.force and not args.since:
         parser.error("triage --force requires --since")
+    if args.command == "bot-invite":
+        if not args.client_id.isdigit():
+            parser.error("--client-id is the Application ID: digits only")
+        print(invite_url(args.client_id))
+        print("Asks for View Channels and Read Message History only. "
+              "Open it as someone with Manage Server on the community server.")
+        return 0
     if args.command == "seed-demo":
         try:
             counts = seed_demo(args.db, datetime.now(timezone.utc))
@@ -191,6 +201,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"investigation failed: {e}", file=sys.stderr)
             return 1
         print(format_investigation(result, conn))
+    elif args.command == "bot":
+        token = _bot_token()
+        if token is None:
+            return 2
+        from pulse.sources.bot_client import run_streamer
+
+        streamer = run_streamer(token, config, conn)
+        print(f"bot stopped: {streamer.received} live messages received, {streamer.written} written")
     elif args.command == "web":
         conn.close()
         settings = WebSettings(

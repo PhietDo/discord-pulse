@@ -59,3 +59,7 @@ per_request = 0.0000387
 # [paths]
 # db = "pulse.db"
 # imports = "imports"
+
+[bot]
+# For a channel the bot has never read, how far back the first backfill goes.
+backfill_days = 30

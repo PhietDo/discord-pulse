@@ -6,11 +6,13 @@ discord.py glue and is the only module that imports discord.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterator
 
 from pulse.config import Config
 from pulse.models import Message, from_iso
+from pulse.store import upsert_messages
 
 KEEP_TYPES = ("default", "reply")
 BOT_PERMISSIONS = 1024 | 65536  # View Channels + Read Message History
@@ -143,3 +145,61 @@ class BotSource:
         self.errors = []
         default_since = since or (self._now() - timedelta(days=self._config.bot_backfill_days))
         yield from self._runner(self._token, self._config, last_seen(self._conn), default_since, self.errors)
+
+
+FLUSH_SECONDS = 5
+
+
+class BotStreamer:
+    """Buffers live messages and writes them in batches.
+
+    add() runs on the event loop; flush() runs in a worker thread. A flush that hits
+    "database is locked" (the pipeline is writing) keeps its batch for the next flush.
+    """
+
+    def __init__(self, conn: sqlite3.Connection, config: Config):
+        self._conn, self._config = conn, config
+        self._pending: dict[str, Message] = {}
+        self._pending_lock = threading.Lock()
+        self._db_lock = threading.Lock()
+        self.received = self.written = self.flush_failures = 0
+
+    def add(self, msg) -> bool:
+        guild = getattr(msg, "guild", None)
+        if guild is None or str(guild.id) != self._config.guild_id:
+            return False
+        m = message_from_discord(msg, self._config.guild_id)
+        if m is None or not wanted(self._config, m.channel_id, m.parent_channel_id):
+            return False
+        with self._pending_lock:
+            self._pending[m.id] = m
+            self.received += 1
+        return True
+
+    def add_many(self, messages: list[Message]) -> None:
+        with self._pending_lock:
+            for m in messages:
+                self._pending[m.id] = m
+
+    def since(self) -> dict[str, datetime]:
+        with self._db_lock:
+            return last_seen(self._conn)
+
+    def flush(self) -> int:
+        with self._pending_lock:
+            batch, self._pending = self._pending, {}
+        if not batch:
+            return 0
+        try:
+            with self._db_lock:
+                upsert_messages(self._conn, list(batch.values()), self._config.team_member_ids)
+        except sqlite3.OperationalError as e:
+            with self._pending_lock:
+                for mid, m in batch.items():
+                    self._pending.setdefault(mid, m)  # a newer version that arrived meanwhile wins
+            self.flush_failures += 1
+            if "locked" in str(e):
+                return 0
+            raise
+        self.written += len(batch)
+        return len(batch)
