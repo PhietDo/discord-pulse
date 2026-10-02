@@ -94,7 +94,7 @@ def _row(raw) -> GoldRow | None:
 def load_gold(path: str | Path) -> GoldSet:
     gold = GoldSet()
     seen: set[str] = set()
-    with Path(path).open(encoding="utf-8") as fh:
+    with Path(path).open(encoding="utf-8-sig") as fh:
         for n, text in enumerate(fh, start=1):
             if not text.strip():
                 continue
@@ -361,11 +361,16 @@ def format_results(gold: GoldSet, results: list[EvalResult]) -> str:
 
 
 def write_sample(conn: sqlite3.Connection, out: Path, n: int, *, seed: int = 0) -> int:
-    """Write n random community messages with empty labels, for hand labelling."""
+    """Write n random community (non-staff) messages with empty labels, for hand labelling.
+    Raises LookupError, writing nothing, when the database has no such messages."""
     out = Path(out)
     if out.exists():
         raise FileExistsError(f"{out} already exists; pick another --out")
-    rows = conn.execute("SELECT * FROM messages WHERE is_bot = 0 AND trim(content) != '' ORDER BY id").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM messages WHERE is_bot = 0 AND is_team = 0 AND trim(content) != '' ORDER BY id"
+    ).fetchall()
+    if not rows:
+        raise LookupError("no messages")
     picked = random.Random(seed).sample(rows, min(n, len(rows)))
     picked.sort(key=lambda r: (r["created_at"], r["id"]))
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -411,6 +416,9 @@ def main(argv=None, *, env=None, backends_for=None, classifier_for=None) -> int:
             written = write_sample(conn, args.out, args.sample)
         except FileExistsError as e:
             print(f"eval: {e}", file=sys.stderr)
+            return 2
+        except LookupError:
+            print(f"eval: no messages in {config.db_path}; run ingest first", file=sys.stderr)
             return 2
         finally:
             conn.close()

@@ -189,3 +189,20 @@ def test_sample_writes_unlabelled_rows_and_refuses_to_overwrite(tmp_path, capsys
     conn.close()
     assert cli(tmp_path, ["--sample", "2", "--out", str(tmp_path / "new.jsonl")]) == 0
     assert "fill in each labels object" in capsys.readouterr().out
+
+
+def test_sample_leaves_out_staff_messages(tmp_path):
+    conn = connect(tmp_path / "pulse.db")
+    upsert_messages(conn, [msg(f"m{i}", f"text {i}", minutes=i) for i in range(3)]
+                    + [msg("s", "staff here", author_id="t1", author_name="sam")], frozenset({"t1"}))
+    out = tmp_path / "label-me.jsonl"
+    assert write_sample(conn, out, 10) == 3
+    assert {json.loads(x)["message_id"] for x in out.read_text().splitlines()} == {"m0", "m1", "m2"}
+
+
+def test_sample_with_an_empty_database_exits_2_without_writing(tmp_path, capsys):
+    out = tmp_path / "new.jsonl"
+    assert cli(tmp_path, ["--sample", "5", "--out", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert "no messages in" in err and "run ingest first" in err
+    assert not out.exists()

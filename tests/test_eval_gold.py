@@ -100,3 +100,10 @@ def test_gold_labels_and_logs_are_git_ignored():
         assert subprocess.run(["git", "check-ignore", "-q", path], cwd=root).returncode == 0, path
     example = subprocess.run(["git", "check-ignore", "-q", "eval/gold.example.jsonl"], cwd=root)
     assert example.returncode == 1
+
+
+def test_load_gold_accepts_a_byte_order_mark(tmp_path):
+    path = tmp_path / "gold.jsonl"
+    path.write_text(line("1") + "\n", encoding="utf-8-sig")
+    gold = load_gold(path)
+    assert [r.message.id for r in gold.rows] == ["1"] and gold.errors == []
