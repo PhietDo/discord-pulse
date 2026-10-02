@@ -18,7 +18,7 @@ def run_digest_job(settings: WebSettings, launch: str | None) -> None:
         llm = settings.llm_factory(conn, settings.config)
         run_digest(conn, llm, settings.clock(), launch=launch)
     except (LookupError, BudgetExceeded, LLMError) as e:
-        log.warning("digest job failed: %s", e)
+        log.warning("digest job failed: %s", e, exc_info=True)
     finally:
         conn.close()
 

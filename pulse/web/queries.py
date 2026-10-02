@@ -148,6 +148,7 @@ def bug_groups(conn, f: Filters, *, open_only: bool = False, per_group: int = 5)
         (to_iso(f.start), to_iso(f.end), *params),
     ).fetchall()
     resolved = stats.theme_resolution(conn)
+    now_iso = to_iso(f.now)
     names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM themes")}
     theme_of: dict[str, int] = {}
     for r in conn.execute("SELECT message_id, theme_id FROM message_themes ORDER BY theme_id"):
@@ -163,7 +164,7 @@ def bug_groups(conn, f: Filters, *, open_only: bool = False, per_group: int = 5)
         g["ids"].append(r["id"])
         g["times"].append(r["created_at"])
         g["authors"].add(r["author_id"])
-        if stats.first_team_reply(conn, r["id"], r["thread_id"], r["created_at"]) is None:
+        if stats.first_team_reply(conn, r["id"], r["thread_id"], r["created_at"], before=now_iso) is None:
             g["unanswered_ids"].append(r["id"])
     ordered = sorted(
         groups.values(),
@@ -211,7 +212,7 @@ def pct_change(current: int, previous: int) -> int | None:
 JOB_TIMEOUT_MINUTES = 10
 
 
-def report_rows(conn) -> list[dict]:
+def report_rows(conn, now: datetime) -> list[dict]:
     rows = []
     for r in conn.execute(
         "SELECT d.id, d.kind, d.created_at, l.name AS launch FROM digests d LEFT JOIN launches l ON l.id = d.launch_id"
@@ -219,9 +220,13 @@ def report_rows(conn) -> list[dict]:
         title = f"Launch digest: {r['launch']}" if r["kind"] == "launch" else "Weekly digest"
         rows.append({"type": "digest", "id": r["id"], "title": title, "created_at": r["created_at"],
                      "state": "done", "href": f"/reports/digest/{r['id']}"})
+    stale = to_iso(now - timedelta(minutes=JOB_TIMEOUT_MINUTES))
     for r in conn.execute("SELECT id, question, markdown, created_at FROM investigations"):
         md = r["markdown"]
-        state = "running" if md is None else "failed" if md.startswith("Investigation failed") else "done"
+        if md is None:  # no result after the timeout counts as failed, as on the detail page
+            state = "running" if r["created_at"] >= stale else "failed"
+        else:
+            state = "failed" if md.startswith("Investigation failed") else "done"
         rows.append({"type": "investigation", "id": r["id"], "title": r["question"], "created_at": r["created_at"],
                      "state": state, "href": f"/reports/investigation/{r['id']}"})
     rows.sort(key=lambda x: (x["created_at"], x["type"], x["id"]), reverse=True)

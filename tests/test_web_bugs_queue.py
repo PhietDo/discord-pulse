@@ -66,3 +66,39 @@ def test_close_already_closed_item_is_404(tmp_path):
     assert client.post(f"/queue/{qid}/close", data={"action": "handled"}).status_code == 404
     assert client.post("/queue/99999/close", data={"action": "handled"}).status_code == 404
     assert client.post(f"/queue/{qid}/close", data={"action": "reopen"}).status_code == 400
+
+
+def test_bug_reply_after_now_does_not_count(tmp_path):
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from pulse.store import upsert_messages
+    from pulse.web.filters import parse_filters
+    from pulse.web.queries import bug_groups
+    from tests.fakes import T0, msg
+    from tests.web_fakes import NOW
+
+    make_client(tmp_path)
+    conn = connect(tmp_path / "pulse.db")
+    later = (NOW - T0) + timedelta(hours=1)  # an hour after the dashboard's "now"
+    reply = replace(msg("s9", "fixed now", minutes=later.total_seconds() / 60, channel_id="200",
+                        author_id="t1", author_name="sam", reply_to_id="g2"), channel_name="general")
+    upsert_messages(conn, [reply], frozenset({"t1"}))
+    groups = bug_groups(conn, parse_filters(None, None, NOW, set()))
+    assert any("g2" in g["unanswered_ids"] for g in groups)
+
+
+def test_failed_digest_job_logs_traceback(tmp_path, caplog):
+    import logging
+
+    from pulse.agents.base import LLMError
+    from pulse.web import jobs
+
+    def broken(conn, config):
+        raise LLMError("provider down")
+
+    client = make_client(tmp_path, llm_factory=broken)
+    with caplog.at_level(logging.WARNING, logger="pulse.web.jobs"):
+        jobs.run_digest_job(client.app.state.settings, None)
+    record = next(r for r in caplog.records if "digest job failed" in r.getMessage())
+    assert record.exc_info is not None

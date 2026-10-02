@@ -75,3 +75,17 @@ def test_stale_running_investigation_shows_timeout(tmp_path):
                      (to_iso(NOW - timedelta(minutes=11)),))
     page = client.get("/reports/investigation/5").text
     assert "No result after 10 minutes" in page and "hx-trigger" not in page
+
+
+def test_report_list_marks_stale_running_investigation_failed(tmp_path):
+    from pulse.web.queries import report_rows
+
+    make_client(tmp_path)
+    conn = connect(tmp_path / "pulse.db")
+    with conn:
+        conn.execute("INSERT INTO investigations (id, question, context, created_at) VALUES (5, 'old?', '{}', ?)",
+                     (to_iso(NOW - timedelta(minutes=11)),))
+        conn.execute("INSERT INTO investigations (id, question, context, created_at) VALUES (6, 'new?', '{}', ?)",
+                     (to_iso(NOW - timedelta(minutes=2)),))
+    states = {r["id"]: r["state"] for r in report_rows(conn, NOW) if r["type"] == "investigation"}
+    assert states == {5: "failed", 6: "running"}

@@ -32,7 +32,7 @@ def reports(request: Request, pending: str | None = None, conn=Depends(get_conn)
         if since is not None:
             state, reason = queries.digest_job_state(conn, since, f.now)
             job = {"state": state, "reason": reason, "pending": pending}
-    return render(request, "reports.html", conn, f, "reports", rows=queries.report_rows(conn), job=job)
+    return render(request, "reports.html", conn, f, "reports", rows=queries.report_rows(conn, f.now), job=job)
 
 
 @router.post("/reports/digest")
