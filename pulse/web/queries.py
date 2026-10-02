@@ -126,6 +126,18 @@ def queue_cards(conn, f: Filters, *, limit: int = 200, reason: str | None = None
     ]
 
 
+def open_queue_summary(conn, channels: tuple[str, ...] | None) -> dict:
+    """Counts over every open item in scope (not a truncated list): by reason, and the oldest message time."""
+    scope, params = stats.scope_clause(channels)
+    row = conn.execute(
+        "SELECT COUNT(*) AS total, COALESCE(SUM(q.reason = 'frustrated'), 0) AS frustrated,"
+        " COALESCE(SUM(q.reason = 'unanswered'), 0) AS unanswered, MIN(m.created_at) AS oldest"
+        f" FROM mod_queue q JOIN messages m ON m.id = q.message_id WHERE q.status = 'open'{scope}",
+        params,
+    ).fetchone()
+    return dict(row)
+
+
 def bug_groups(conn, f: Filters, *, open_only: bool = False, per_group: int = 5) -> list[dict]:
     """Bug reports in the window grouped by pain point (spec 8.4), most urgent pain point first."""
     scope, params = stats.scope_clause(f.channels)

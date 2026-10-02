@@ -9,6 +9,7 @@ from pulse.citations import render_html
 from pulse.web import queries
 from pulse.web.cards import cards_by_ids
 from pulse.web.charts import sentiment_chart
+from pulse.web.context import open_queue_count
 from pulse.web.deps import get_conn, get_filters, render
 from pulse.web.filters import Filters
 
@@ -22,7 +23,8 @@ def overview(request: Request, conn=Depends(get_conn), f: Filters = Depends(get_
     week = stats.period_summary(conn, week_start, now, channels=f.channels)
     prev = stats.period_summary(conn, week_start - timedelta(days=7), week_start, channels=f.channels)
     window = stats.period_summary(conn, f.start, f.end, channels=f.channels)
-    queue = queries.queue_cards(conn, f)
+    attention = queries.queue_cards(conn, f, limit=3)
+    open_items = queries.open_queue_summary(conn, f.channels)
     praise = stats.sample_messages(
         conn, f.start, f.end, kinds=("praise",), most_negative=False, limit=3, channels=f.channels
     )
@@ -39,11 +41,11 @@ def overview(request: Request, conn=Depends(get_conn), f: Filters = Depends(get_
         ),
         rising=queries.theme_rows(conn, f, limit=5),
         mix=queries.kind_mix(window["by_kind"]),
-        breakdown=[c for c in stats.channel_breakdown(conn, f.start, f.end, now) if f.channel in (None, c["id"])],
-        queue_total=len(queue),
-        frustrated=sum(1 for q in queue if q["reason"] == "frustrated"),
-        oldest=min((q["created_at"] for q in queue), default=None),
-        attention=queue[:3],
+        breakdown=stats.channel_breakdown(conn, f.start, f.end, now, channels=f.channels),
+        queue_total=open_queue_count(conn, f.channels),
+        frustrated=open_items["frustrated"],
+        oldest=open_items["oldest"],
+        attention=attention,
         praise=cards_by_ids(conn, [m["message_id"] for m in praise]),
         digest=digest,
         digest_html=Markup(render_html(digest["markdown"], conn)) if digest else None,

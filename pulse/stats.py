@@ -51,12 +51,16 @@ def theme_clause(conn: sqlite3.Connection, theme_id: int | None) -> tuple[str, l
 
 
 def top_channels(conn: sqlite3.Connection) -> list[dict]:
-    """Top-level channels (not threads) that have messages, busiest first."""
+    """Top-level channels with messages, threads counted under their parent, busiest first.
+
+    A forum channel that only has threads is listed under its own id. Thread rows imported
+    before parent_channel_id existed are left out until they are re-imported."""
     rows = conn.execute(
-        "SELECT channel_id, MAX(channel_name) AS name, COUNT(*) AS n FROM messages"
-        " WHERE thread_id IS NULL GROUP BY channel_id ORDER BY n DESC, channel_id"
+        "SELECT COALESCE(parent_channel_id, channel_id) AS cid,"
+        " MAX(CASE WHEN thread_id IS NULL THEN channel_name END) AS name, COUNT(*) AS n FROM messages"
+        " WHERE thread_id IS NULL OR parent_channel_id IS NOT NULL GROUP BY cid ORDER BY n DESC, cid"
     ).fetchall()
-    return [{"id": r["channel_id"], "name": r["name"] or r["channel_id"], "messages": r["n"]} for r in rows]
+    return [{"id": r["cid"], "name": r["name"] or r["cid"], "messages": r["n"]} for r in rows]
 
 
 def to_message(row: sqlite3.Row) -> dict:
@@ -334,10 +338,20 @@ def reply_stats(
     }
 
 
-def channel_breakdown(conn: sqlite3.Connection, start: datetime, end: datetime, now: datetime) -> list[dict]:
-    """Per top-level channel (threads included): volume, mood and reply times for the window."""
+def channel_breakdown(
+    conn: sqlite3.Connection,
+    start: datetime,
+    end: datetime,
+    now: datetime,
+    *,
+    channels: tuple[str, ...] | None = None,
+) -> list[dict]:
+    """Per top-level channel (threads included): volume, mood and reply times for the window.
+    With `channels`, only those channels are computed."""
     out = []
     for ch in top_channels(conn):
+        if channels is not None and ch["id"] not in channels:
+            continue
         summary = period_summary(conn, start, end, channels=(ch["id"],))
         if not summary["messages"]:
             continue

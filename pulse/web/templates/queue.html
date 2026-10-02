@@ -10,6 +10,7 @@
     <a class="chip" href="/queue{{ f.qs(reason='unanswered') }}"{% if reason == 'unanswered' %} aria-current="true"{% endif %}>Unanswered</a>
   </div>
 </div>
+{% if items|length < open_total %}<p class="sub">Showing {{ items|length }} of {{ open_total }}</p>{% endif %}
 <div class="msgs">
 {% for m in items %}
   {% call message_card(m, now, f, reason=m.reason) %}

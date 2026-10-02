@@ -10,11 +10,11 @@
 <div class="strip">
   <div class="stat"><span class="label">Messages, 7 days</span><span class="big">{{ week.messages }}</span>
     <span class="delta {{ 'warnc' if vol_delta and vol_delta > 0 else 'mut' }}">{% if vol_delta is none %}nothing the week before{% else %}{{ '%+d'|format(vol_delta) }}% vs prev 7d{% endif %}</span></div>
-  <div class="stat"><span class="label">Avg sentiment</span><span class="big {{ 'neg' if (week.avg_sentiment or 0) < 0 else 'pos' if (week.avg_sentiment or 0) > 0 else '' }}">{{ week.avg_sentiment|signed }}</span>
+  <div class="stat"><span class="label">Avg sentiment, last 7 days</span><span class="big {{ 'neg' if (week.avg_sentiment or 0) < 0 else 'pos' if (week.avg_sentiment or 0) > 0 else '' }}">{{ week.avg_sentiment|signed }}</span>
     <span class="delta mut">{{ prev.avg_sentiment|signed }} the week before</span></div>
   <div class="stat"><span class="label">Needs a reply</span><span class="big {{ 'neg' if queue_total else '' }}">{{ queue_total }}</span>
     <span class="delta mut">{% if queue_total %}{{ frustrated }} frustrated · oldest {{ oldest|age(now) }}{% else %}queue is clear{% endif %}</span></div>
-  <div class="stat"><span class="label">First staff reply</span><span class="big">{{ replies.median_minutes|minutes }}</span>
+  <div class="stat"><span class="label">First staff reply, last 7 days</span><span class="big">{{ replies.median_minutes|minutes }}</span>
     <span class="delta {{ 'neg' if replies.waiting_over_24h else 'mut' }}">{{ replies.answered }} of {{ replies.needs_reply }} answered · {{ replies.waiting_over_24h }} waiting &gt;24h</span></div>
   <div class="stat"><span class="label">Spend today</span><span class="big">${{ "%.2f"|format(spent) }}</span>
     <span class="delta mut">of ${{ "%.2f"|format(cap) }} daily cap</span></div>

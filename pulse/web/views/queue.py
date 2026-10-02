@@ -14,7 +14,11 @@ REASONS = ("frustrated", "unanswered")
 @router.get("/queue", response_class=HTMLResponse)
 def queue(request: Request, reason: str | None = None, conn=Depends(get_conn), f: Filters = Depends(get_filters)):
     reason = reason if reason in REASONS else None
-    return render(request, "queue.html", conn, f, "queue", items=queries.queue_cards(conn, f, reason=reason), reason=reason)
+    summary = queries.open_queue_summary(conn, f.channels)
+    return render(
+        request, "queue.html", conn, f, "queue", items=queries.queue_cards(conn, f, reason=reason), reason=reason,
+        open_total=summary[reason] if reason else summary["total"],
+    )
 
 
 @router.post("/queue/{queue_id}/close")

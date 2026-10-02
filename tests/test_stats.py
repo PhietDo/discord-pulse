@@ -142,7 +142,7 @@ def test_like_escapes_wildcards():
     assert hits("k\\s") == ["e"]
 
 
-NAMES = {"100": "help", "200": "general", "300": "M1 install thread"}
+NAMES = {"100": "help", "200": "general", "300": "M1 install thread", "601": "forum post a", "602": "forum post b"}
 
 
 def _m(id, channel, sentiment, *, minutes=0, thread=None, parent=None):
@@ -202,9 +202,34 @@ def test_theme_scores_respect_channel_scope():
 def test_top_channels_lists_top_level_channels_busiest_first():
     conn = _channel_db()
     assert stats.top_channels(conn) == [
-        {"id": "100", "name": "help", "messages": 2},
+        {"id": "100", "name": "help", "messages": 3},  # its thread counts toward it
         {"id": "200", "name": "general", "messages": 1},
     ]
+
+
+def _forum_db():
+    """Forum channel 600 has only threads (601, 602); #general (200) has top-level posts."""
+    conn = connect(":memory:")
+    rows = [
+        _m("f1", "601", -2, minutes=0, thread="601", parent="600"),
+        _m("f2", "601", -1, minutes=1, thread="601", parent="600"),
+        _m("f3", "602", -1, minutes=2, thread="602", parent="600"),
+        _m("g1", "200", 2, minutes=3),
+    ]
+    upsert_messages(conn, [m for m, _ in rows], frozenset())
+    for m, s in rows:
+        set_triage(conn, m.id, sentiment=s)
+    return conn
+
+
+def test_top_channels_include_thread_only_forum_channels():
+    conn = _forum_db()
+    assert stats.top_channels(conn) == [
+        {"id": "600", "name": "600", "messages": 3},
+        {"id": "200", "name": "general", "messages": 1},
+    ]
+    rows = stats.channel_breakdown(conn, START, END, END)
+    assert [(r["id"], r["messages"]) for r in rows] == [("600", 3), ("200", 1)]
 
 
 def _reply_db():
