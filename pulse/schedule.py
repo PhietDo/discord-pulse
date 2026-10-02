@@ -55,7 +55,7 @@ def build_plist(job: Job, *, python: Path, config: Path, env_file: Path, log_dir
         "WorkingDirectory": str(config.parent),
         "StandardOutPath": log,
         "StandardErrorPath": log,
-        "EnvironmentVariables": {"PATH": _PATH},
+        "EnvironmentVariables": {"PATH": _PATH, "PYTHONUNBUFFERED": "1"},
         "ProcessType": "Background",
     }
     if job.interval_seconds:
@@ -68,6 +68,21 @@ def build_plist(job: Job, *, python: Path, config: Path, env_file: Path, log_dir
         plist["RunAtLoad"] = True
         plist["ThrottleInterval"] = 60
     return plist
+
+
+def env_file_names(env_file: Path) -> dict[str, str]:
+    """Names assigned in a shell env file (NAME=value or export NAME=value), read as plain lines."""
+    names: dict[str, str] = {}
+    if not env_file.exists():
+        return names
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        name, sep, value = line.partition("=")
+        if sep and name.isidentifier() and value.strip("'\" "):
+            names[name] = "set"
+    return names
 
 
 def run_launchctl(cmd: list[str]) -> int:

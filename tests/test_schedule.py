@@ -75,7 +75,9 @@ def test_uninstall_boots_out_and_removes(tmp_path):
 
 
 def test_schedule_cli_show_install_uninstall(tmp_path, monkeypatch, capsys):
-    (tmp_path / "pulse.toml").write_text("[server]\n")  # not loaded: schedule never needs keys
+    from tests.test_cli import CONFIG
+
+    (tmp_path / "pulse.toml").write_text(CONFIG)  # install checks it loads; keys are only warned about
     calls = []
     monkeypatch.setattr(schedule, "AGENTS_DIR", tmp_path / "A")
     monkeypatch.setattr(schedule, "run_launchctl", lambda cmd: calls.append(cmd) or 0)
@@ -91,3 +93,37 @@ def test_schedule_cli_show_install_uninstall(tmp_path, monkeypatch, capsys):
     assert main(["--config", cfg, "schedule", "uninstall"]) == 0
     assert list((tmp_path / "A").iterdir()) == []
     assert main(["--config", str(tmp_path / "nope.toml"), "schedule", "install"]) == 2
+
+
+def test_plists_run_python_unbuffered(tmp_path):
+    for name in JOBS:
+        assert plist_for(name, tmp_path)["EnvironmentVariables"]["PYTHONUNBUFFERED"] == "1"
+
+
+def _cli_setup(tmp_path, monkeypatch, config_text):
+    (tmp_path / "pulse.toml").write_text(config_text)
+    calls = []
+    monkeypatch.setattr(schedule, "AGENTS_DIR", tmp_path / "A")
+    monkeypatch.setattr(schedule, "run_launchctl", lambda cmd: calls.append(cmd) or 0)
+    return str(tmp_path / "pulse.toml"), calls
+
+
+def test_schedule_install_refuses_a_broken_config(tmp_path, monkeypatch, capsys):
+    cfg, calls = _cli_setup(tmp_path, monkeypatch, "[server]\n")
+    assert main(["--config", cfg, "schedule", "install", "--env-file", str(tmp_path / "env")]) == 2
+    assert "guild_id" in capsys.readouterr().err
+    assert calls == [] and not (tmp_path / "A").exists()
+
+
+def test_schedule_install_warns_about_keys_missing_from_env_file_and_shell(tmp_path, monkeypatch, capsys):
+    from tests.test_cli import CONFIG
+
+    cfg, _ = _cli_setup(tmp_path, monkeypatch, CONFIG)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    env_file = tmp_path / "env"
+    env_file.write_text("export OTHER=1\n")
+    assert main(["--config", cfg, "schedule", "install", "--env-file", str(env_file)]) == 0
+    assert "ANTHROPIC_API_KEY" in capsys.readouterr().err
+    env_file.write_text("# keys\nexport ANTHROPIC_API_KEY='sk-x'\n")
+    assert main(["--config", cfg, "schedule", "install", "--env-file", str(env_file)]) == 0
+    assert "ANTHROPIC_API_KEY" not in capsys.readouterr().err

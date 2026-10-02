@@ -40,7 +40,7 @@ from pulse.pipeline import (
     run_pipeline,
 )
 from pulse.store import sync_launches
-from pulse.sources.bot_source import BotSource, invite_url
+from pulse.sources.bot_source import BotSource, invite_url, is_fatal
 from pulse.sources.file_source import FileSource
 from pulse.web.app import create_app
 from pulse.web.settings import WebSettings
@@ -148,9 +148,18 @@ def _schedule(args) -> int:
                                      runner=schedule.run_launchctl)
         print("removed: " + (", ".join(str(p) for p in removed) or "nothing was installed"))
         return 0
+    try:
+        loaded = load_config(config, require_keys=False)
+    except ConfigError as e:
+        print(f"config error: {e}", file=sys.stderr)
+        return 2
     if not common["env_file"].exists():
         print(f"schedule: warning: {common['env_file']} not found; jobs will start without API keys",
               file=sys.stderr)
+    missing = missing_keys(loaded, {**os.environ, **schedule.env_file_names(common["env_file"])})
+    if missing:
+        print(f"schedule: warning: {', '.join(missing)} not set in {common['env_file']}; "
+              "jobs that call a model will fail until it is", file=sys.stderr)
     try:
         paths = schedule.install(names, agents_dir=schedule.AGENTS_DIR, runner=schedule.run_launchctl, **common)
     except schedule.ScheduleError as e:
@@ -219,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
             source = FileSource(config.imports_dir)
         stats, errors = ingest(conn, config, source)
         print(format_ingest(stats, errors))
+        if args.source == "bot" and any(is_fatal(e) for e in errors):
+            return 1
     elif args.command == "triage":
         since = datetime.combine(args.since, datetime.min.time(), timezone.utc) if args.since else None
         print(format_triage(run_triage(conn, build_llm(conn, config), since=since, force=args.force)))
@@ -261,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
 
         streamer = run_streamer(token, config, conn)
         print(f"bot stopped: {streamer.received} live messages received, {streamer.written} written")
+        if streamer.fatal:
+            return 1
     elif args.command == "issue":
         try:
             if args.dry_run:

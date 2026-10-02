@@ -144,3 +144,57 @@ def test_pitch_doc_discloses_every_data_destination():
                    "GitHub or Linear", "never author names", "Slack alerts", "display name"):
         assert phrase in pitch
     assert "It has no permission to do any of that." not in pitch
+
+
+def _bot_cli(tmp_path, monkeypatch):
+    from tests.test_cli import CONFIG
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "tok")
+    monkeypatch.setattr("pulse.run._discord_installed", lambda: True)
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    return str(tmp_path / "pulse.toml")
+
+
+@pytest.mark.parametrize("error, code", [
+    ("Discord rejected DISCORD_BOT_TOKEN", 1),
+    ("turn on Message Content Intent on the bot's page in the Discord Developer Portal", 1),
+    ("the bot is not in server 900; see python -m pulse.run bot-invite", 1),
+    ("#help: Forbidden: 403 Missing Access", 0),
+])
+def test_ingest_from_bot_exits_1_on_fatal_errors_only(tmp_path, monkeypatch, capsys, error, code):
+    cfg = _bot_cli(tmp_path, monkeypatch)
+
+    def runner(token, config, since, default_since, errors):
+        errors.append(error)
+        return []
+
+    monkeypatch.setattr(bot_source, "_default_runner", runner)
+    assert main(["--config", cfg, "ingest", "--source", "bot"]) == code
+    assert error in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("fatal, code", [(True, 1), (False, 0)])
+def test_bot_command_exits_1_when_the_streamer_hit_a_fatal_error(tmp_path, monkeypatch, fatal, code):
+    cfg = _bot_cli(tmp_path, monkeypatch)
+
+    def fake_run_streamer(token, config, conn, **kwargs):
+        s = BotStreamer(conn, config)
+        s.fatal = fatal
+        return s
+
+    monkeypatch.setattr("pulse.sources.bot_client.run_streamer", fake_run_streamer)
+    assert main(["--config", cfg, "bot"]) == code
+
+
+def test_is_fatal_recognises_only_fatal_bot_errors():
+    assert bot_source.is_fatal("Discord rejected DISCORD_BOT_TOKEN")
+    assert bot_source.is_fatal("the bot is not in server 1; see python -m pulse.run bot-invite")
+    assert not bot_source.is_fatal("#general: HTTPException: 500")
+
+
+def test_readme_states_edit_coverage_and_env_quoting():
+    readme = Path("README.md").read_text()
+    assert "discord.py keeps about the last 1,000" in readme
+    assert "older edits are caught on the next file import" in readme
+    assert "Write values in single quotes if they contain spaces or $ (export NAME='value')." in readme

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from pulse.config import Config
 from pulse.models import Message
-from pulse.sources.bot_source import FLUSH_SECONDS, BotStreamer, backfill, catch_up_since
+from pulse.sources.bot_source import FLUSH_SECONDS, BotStreamer, backfill, catch_up_since, is_fatal
 
 
 def intents():
@@ -72,7 +72,7 @@ def run_streamer(token: str, config: Config, conn, *, log=print) -> BotStreamer:
     async def on_ready():
         guild = client.get_guild(int(config.guild_id))
         if guild is None:
-            log(f"bot: not in server {config.guild_id}; see python -m pulse.run bot-invite")
+            errors.append(f"the bot is not in server {config.guild_id}; see python -m pulse.run bot-invite")
             await client.close()
             return
         if state["flusher"] is None:
@@ -104,5 +104,6 @@ def run_streamer(token: str, config: Config, conn, *, log=print) -> BotStreamer:
     run_client(client, token, errors)
     for e in errors:
         log(f"bot: {e}")
+    streamer.fatal = any(is_fatal(e) for e in errors)
     streamer.flush()
     return streamer

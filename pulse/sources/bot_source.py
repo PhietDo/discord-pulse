@@ -19,6 +19,15 @@ BOT_PERMISSIONS = 1024 | 65536  # View Channels + Read Message History
 _INVITE = "https://discord.com/oauth2/authorize?client_id={client_id}&scope=bot&permissions={permissions}"
 
 
+# Errors that mean the bot never read anything (bad token, intent off, not in the server).
+# Per-channel errors (Forbidden on one channel) are not fatal.
+FATAL_PREFIXES = ("Discord rejected", "turn on Message Content Intent", "the bot is not in server")
+
+
+def is_fatal(error: str) -> bool:
+    return error.startswith(FATAL_PREFIXES)
+
+
 def invite_url(client_id: str) -> str:
     return _INVITE.format(client_id=client_id, permissions=BOT_PERMISSIONS)
 
@@ -174,6 +183,7 @@ class BotStreamer:
         self._pending_lock = threading.Lock()
         self._db_lock = threading.Lock()
         self.received = self.written = self.flush_failures = 0
+        self.fatal = False  # set by run_streamer when the bot could not connect or is not in the server
 
     def add(self, msg) -> bool:
         guild = getattr(msg, "guild", None)

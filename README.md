@@ -89,7 +89,7 @@ export DISCORD_BOT_TOKEN=...                                   # from the Develo
 .venv/bin/python -m pulse.run bot                              # catch up, then stream until Ctrl-C
 ```
 
-Both read only channels the bot can see, narrowed by `[server] channel_ids`. A channel read for the first time goes back `[bot] backfill_days` (default 30); after that each run continues from the last stored message, so a restart or disconnect never leaves a gap. Edits to messages the bot saw while running replace the old text and re-queue them for triage. `pipeline` and the dashboard work the same whether messages came from exports or the bot.
+Both read only channels the bot can see, narrowed by `[server] channel_ids`. A channel read for the first time goes back `[bot] backfill_days` (default 30); after that each run continues from the last stored message, so a restart or disconnect never leaves a gap. Edits are picked up for messages the bot has seen since it started (discord.py keeps about the last 1,000); older edits are caught on the next file import. `pipeline` and the dashboard work the same whether messages came from exports or the bot.
 
 ## Scheduled runs (macOS)
 
@@ -99,7 +99,7 @@ Both read only channels the bot can see, narrowed by `[server] channel_ids`. A c
 .venv/bin/python -m pulse.run schedule uninstall
 ```
 
-launchd does not see your shell's environment, so each job loads `~/.config/discord-pulse/env` (change it with `--env-file`) before it runs. Put `export NAME=value` lines for the keys you use in that file and keep it `chmod 600`; the keys are never copied into the plists. Logs go to `logs/` next to `pulse.toml`.
+launchd does not see your shell's environment, so each job loads `~/.config/discord-pulse/env` (change it with `--env-file`) before it runs. Put `export NAME=value` lines for the keys you use in that file and keep it `chmod 600`; the keys are never copied into the plists. Write values in single quotes if they contain spaces or $ (export NAME='value'). Logs go to `logs/` next to `pulse.toml`.
 
 ## Send a pain point to GitHub or Linear
 
