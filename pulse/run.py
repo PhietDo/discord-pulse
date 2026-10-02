@@ -4,6 +4,9 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import date, datetime, timezone
+from pathlib import Path
+
+import uvicorn
 
 from pulse.agents.base import BudgetExceeded, LLMError
 from pulse.agents.digest import run_digest
@@ -12,6 +15,7 @@ from pulse.agents.triage import run_triage
 from pulse.agents.theme import run_themes
 from pulse.config import ConfigError, load_config
 from pulse.db import connect
+from pulse.demo import SERVER_NAME, demo_config, seed_demo
 from pulse.modqueue import list_open, refresh_mod_queue
 from pulse.pipeline import (
     build_llm,
@@ -28,6 +32,8 @@ from pulse.pipeline import (
 )
 from pulse.store import sync_launches
 from pulse.sources.file_source import FileSource
+from pulse.web.app import create_app
+from pulse.web.settings import WebSettings
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -48,7 +54,21 @@ def _parser() -> argparse.ArgumentParser:
     investigate = sub.add_parser("investigate", help="ask the Investigate agent a question")
     investigate.add_argument("question")
     investigate.add_argument("--theme", type=int, help="theme id to focus on")
+    web = sub.add_parser("web", help="serve the dashboard on localhost")
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8321)
+    web.add_argument("--db", help="database file (default: pulse.toml's, or demo.db with --demo)")
+    web.add_argument("--name", help="server name shown in the sidebar")
+    web.add_argument("--demo", action="store_true", help="serve the demo database; no pulse.toml or API keys needed")
+    seed = sub.add_parser("seed-demo", help="write a synthetic community to a demo database")
+    seed.add_argument("--db", default="demo.db")
     return parser
+
+
+def _serve(settings: WebSettings, host: str, port: int) -> int:
+    print(f"Discord Pulse dashboard on http://{host}:{port}")
+    uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,6 +76,25 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "triage" and args.force and not args.since:
         parser.error("triage --force requires --since")
+    if args.command == "seed-demo":
+        try:
+            counts = seed_demo(args.db, datetime.now(timezone.utc))
+        except FileExistsError as e:
+            print(f"seed-demo: {e}", file=sys.stderr)
+            return 2
+        print(f"demo database written to {args.db}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+        print(f"serve it with: python -m pulse.run web --demo --db {args.db}")
+        return 0
+    if args.command == "web" and args.demo:
+        db = Path(args.db or "demo.db")
+        if not db.exists():
+            print(f"web: {db} not found; run `python -m pulse.run seed-demo` first", file=sys.stderr)
+            return 2
+        settings = WebSettings(
+            db_path=db, config=demo_config(db, datetime.now(timezone.utc)),
+            server_name=args.name or SERVER_NAME, demo=True,
+        )
+        return _serve(settings, args.host, args.port)
     try:
         config = load_config(args.config)
     except ConfigError as e:
@@ -103,6 +142,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"investigation failed: {e}", file=sys.stderr)
             return 1
         print(format_investigation(result, conn))
+    elif args.command == "web":
+        conn.close()
+        settings = WebSettings(
+            db_path=Path(args.db) if args.db else config.db_path, config=config,
+            server_name=args.name or "Discord server", llm_factory=build_llm,
+        )
+        return _serve(settings, args.host, args.port)
     return 0
 
 

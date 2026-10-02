@@ -115,3 +115,43 @@ def test_investigate_unknown_theme_exits_1_before_any_model_call(tmp_path, monke
     conn = connect(tmp_path / "pulse.db")
     assert conn.execute("SELECT COUNT(*) FROM agent_runs").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM investigations").fetchone()[0] == 0
+
+
+def _capture_serve(monkeypatch):
+    served = {}
+    monkeypatch.setattr("pulse.run.uvicorn.run",
+                        lambda app, host, port, **kw: served.update(app=app, host=host, port=port))
+    return served
+
+
+def test_seed_demo_then_web_demo(tmp_path, monkeypatch, capsys):
+    db = tmp_path / "demo.db"
+    assert main(["seed-demo", "--db", str(db)]) == 0
+    assert "web --demo" in capsys.readouterr().out
+    served = _capture_serve(monkeypatch)
+    assert main(["web", "--demo", "--db", str(db), "--port", "9000"]) == 0
+    assert served["port"] == 9000 and served["host"] == "127.0.0.1"
+    settings = served["app"].state.settings
+    assert settings.demo and not settings.agents_on and settings.db_path == db
+
+
+def test_web_demo_without_db_exits_2(tmp_path, capsys):
+    assert main(["web", "--demo", "--db", str(tmp_path / "missing.db")]) == 2
+    assert "seed-demo" in capsys.readouterr().err
+
+
+def test_seed_demo_refuses_real_db(tmp_path, capsys):
+    real = tmp_path / "pulse.db"
+    connect(real).close()
+    assert main(["seed-demo", "--db", str(real)]) == 2
+    assert "refusing to overwrite" in capsys.readouterr().err
+
+
+def test_web_with_config_turns_agents_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    served = _capture_serve(monkeypatch)
+    assert main(["--config", str(tmp_path / "pulse.toml"), "web", "--name", "Acme"]) == 0
+    settings = served["app"].state.settings
+    assert settings.agents_on and not settings.demo and settings.server_name == "Acme"
+    assert settings.db_path.name == "pulse.db"
