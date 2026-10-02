@@ -258,7 +258,8 @@ def daily_costs(conn, now: datetime, days: int = 14) -> list[dict]:
     start = end - timedelta(days=days)
     rows = conn.execute(
         "SELECT substr(started_at, 1, 10) AS day, COUNT(*) AS runs, COALESCE(SUM(cost_usd), 0) AS cost,"
-        " SUM(status = 'failed') AS failed, SUM(status = 'skipped_budget') AS skipped FROM agent_runs WHERE started_at >= ? AND started_at < ? GROUP BY day",
+        " SUM(status = 'failed') AS failed, SUM(status = 'skipped_budget') AS skipped"
+        " FROM agent_runs WHERE started_at >= ? AND started_at < ? GROUP BY day",
         (to_iso(start), to_iso(end)),
     ).fetchall()
     by_day = {r["day"]: r for r in rows}
