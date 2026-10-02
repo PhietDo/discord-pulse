@@ -21,7 +21,7 @@ You decide which channels it reads through normal channel permissions. The team 
 ## Where the data goes
 
 - Messages are stored in a database file on the community lead's computer. Nothing is hosted on a server.
-- To label each message, its text is sent to the AI provider the team has configured (for example Anthropic or OpenAI). Those providers do not train on API data by default.
+- To label each message, its text is sent to the AI provider the team has configured: Anthropic, OpenAI, or OpenRouter (which forwards it to the chosen model's provider). Anthropic's and OpenAI's APIs do not train on API data by default; for OpenRouter, the chosen provider's policy applies.
 - The dashboard runs on that computer only and is not reachable from the internet.
 
 ## How to remove it

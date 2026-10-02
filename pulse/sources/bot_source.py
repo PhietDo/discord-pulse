@@ -193,7 +193,7 @@ class BotStreamer:
         try:
             with self._db_lock:
                 upsert_messages(self._conn, list(batch.values()), self._config.team_member_ids)
-        except sqlite3.OperationalError as e:
+        except sqlite3.Error as e:
             with self._pending_lock:
                 for mid, m in batch.items():
                     self._pending.setdefault(mid, m)  # a newer version that arrived meanwhile wins

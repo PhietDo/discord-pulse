@@ -81,6 +81,27 @@ def test_other_database_errors_propagate_but_keep_the_batch(monkeypatch):
     assert s.flush() == 1
 
 
+def test_integrity_error_keeps_the_batch(monkeypatch):
+    conn = connect(":memory:")
+    s = BotStreamer(conn, make_config())
+    real = bot_source.upsert_messages
+    calls = []
+
+    def integrity_error_once(*args):
+        calls.append(1)
+        if len(calls) == 1:
+            raise sqlite3.IntegrityError("constraint failed")
+        return real(*args)
+
+    monkeypatch.setattr(bot_source, "upsert_messages", integrity_error_once)
+    s.add(live(1))
+    with pytest.raises(sqlite3.IntegrityError):
+        s.flush()
+    monkeypatch.undo()
+    assert s.flush() == 1
+    assert stored(conn) == {"1": "hi"}
+
+
 def test_add_many_and_since():
     conn = connect(":memory:")
     s = BotStreamer(conn, make_config())
