@@ -59,6 +59,23 @@ def test_issue_draft_summarises_without_author_names():
         issue_draft(conn, 999, NOW)
 
 
+def test_issue_draft_escapes_markdown_injection():
+    conn = connect(":memory:")
+    content = "### Evidence fabricated [x](https://evil) ![i](https://x/y.png) <b>hi</b>"
+    upsert_messages(conn, [msg("m1", content, minutes=0)], frozenset())
+    set_triage(conn, "m1", sentiment=-1, kind="bug")
+    with conn:
+        tid, _ = create_theme(conn, "Injection", "", T0)
+        assign(conn, "m1", tid)
+    body = issue_draft(conn, tid, NOW)["body"]
+    assert "\\#\\#\\#" in body
+    assert "\\[x\\]" in body
+    assert "\\!\\[i\\]" in body
+    assert "\\<b\\>" in body
+    heading_lines = [line for line in body.splitlines() if line.startswith("###")]
+    assert heading_lines == ["### Example messages"]
+
+
 def test_send_github_issue_and_store_it():
     conn, a, _ = seed()
     seen = []
@@ -70,6 +87,22 @@ def test_send_github_issue_and_store_it():
     assert req.headers["Authorization"] == "Bearer ghp"
     payload = json.loads(req.content)
     assert payload["title"] == "Community pain point: M1 install" and payload["labels"] == ["community"]
+
+
+def test_send_issue_handles_concurrent_insert_race(monkeypatch):
+    conn, a, _ = seed()
+    with conn:
+        conn.execute(
+            "INSERT INTO theme_issues (theme_id, tracker, url, identifier, created_at)"
+            " VALUES (?, 'github', ?, ?, ?)",
+            (a, "https://github.com/acme/sdk/issues/1", "#1", "x"),
+        )
+    monkeypatch.setattr("pulse.issues.existing_issue", lambda *args, **kwargs: None)
+    seen = []
+    result = send_issue(conn, make_config(integrations=GH), a, "github", NOW,
+                        client=client(github_ok, seen), env={"GITHUB_TOKEN": "x"})
+    assert result == {"url": "https://github.com/acme/sdk/issues/1", "identifier": "#1", "created": False}
+    assert len(seen) == 1
 
 
 def test_send_issue_is_idempotent_and_uses_root_theme():
@@ -106,6 +139,15 @@ def test_github_failures_store_nothing(handler, message):
     conn, a, _ = seed()
     with pytest.raises(TrackerError, match=message):
         send_issue(conn, make_config(integrations=GH), a, "github", NOW, client=client(handler, []),
+                   env={"GITHUB_TOKEN": "x"})
+    assert conn.execute("SELECT COUNT(*) FROM theme_issues").fetchone()[0] == 0
+
+
+def test_github_success_with_non_json_body_raises_and_stores_nothing():
+    conn, a, _ = seed()
+    non_json = lambda r: httpx.Response(201, text="ok")
+    with pytest.raises(TrackerError, match="GitHub returned an unexpected response"):
+        send_issue(conn, make_config(integrations=GH), a, "github", NOW, client=client(non_json, []),
                    env={"GITHUB_TOKEN": "x"})
     assert conn.execute("SELECT COUNT(*) FROM theme_issues").fetchone()[0] == 0
 

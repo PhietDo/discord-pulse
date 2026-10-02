@@ -151,16 +151,26 @@ def _classifier(raw: Any, env: Mapping[str, str], require_keys: bool = True) -> 
     return cfg
 
 
+def _valid_repo(repo: str) -> bool:
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+        return False
+    owner, _, name = repo.partition("/")
+    return owner not in (".", "..") and name not in (".", "..")
+
+
 def _integrations(raw: Any) -> IntegrationsConfig:
     raw = raw or {}
     github, linear = raw.get("github") or {}, raw.get("linear") or {}
     repo = github.get("repo")
-    if repo is not None and not re.fullmatch(r"[\w.-]+/[\w.-]+", str(repo)):
+    if repo is not None and not _valid_repo(str(repo)):
         raise ConfigError(f"[integrations.github] repo must look like owner/name, got {repo!r}")
+    labels = github.get("labels", [])
+    if not isinstance(labels, list) or not all(isinstance(x, str) for x in labels):
+        raise ConfigError("[integrations.github] labels must be a list of strings")
     team = linear.get("team_id")
     return IntegrationsConfig(
         github_repo=str(repo) if repo else None,
-        github_labels=tuple(str(x) for x in github.get("labels", [])),
+        github_labels=tuple(labels),
         linear_team_id=str(team) if team else None,
     )
 

@@ -242,3 +242,31 @@ def test_integrations_section(tmp_path):
     path.write_text(base + '[integrations.github]\nrepo = "not a repo"\n')
     with pytest.raises(ConfigError, match="owner/name"):
         load_config(path, {}, require_keys=False)
+
+
+@pytest.mark.parametrize("repo", ["../x", "owner/..", "./x"])
+def test_integrations_rejects_dot_segments_in_repo(tmp_path, repo):
+    from pulse.config import ConfigError, load_config
+
+    base = (
+        '[server]\nguild_id = "1"\n[models]\ntriage = "anthropic:m"\ntheme = "anthropic:m"\n'
+        'digest = "anthropic:m"\ninvestigate = "anthropic:m"\n[pricing."anthropic:m"]\ninput = 1\noutput = 2\n'
+    )
+    path = tmp_path / "pulse.toml"
+    path.write_text(base + f'[integrations.github]\nrepo = "{repo}"\n')
+    with pytest.raises(ConfigError, match="owner/name"):
+        load_config(path, {}, require_keys=False)
+
+
+@pytest.mark.parametrize("labels_toml", ['labels = "community"', "labels = 5"])
+def test_integrations_rejects_non_list_labels(tmp_path, labels_toml):
+    from pulse.config import ConfigError, load_config
+
+    base = (
+        '[server]\nguild_id = "1"\n[models]\ntriage = "anthropic:m"\ntheme = "anthropic:m"\n'
+        'digest = "anthropic:m"\ninvestigate = "anthropic:m"\n[pricing."anthropic:m"]\ninput = 1\noutput = 2\n'
+    )
+    path = tmp_path / "pulse.toml"
+    path.write_text(base + f'[integrations.github]\nrepo = "acme/sdk"\n{labels_toml}\n')
+    with pytest.raises(ConfigError, match="labels must be a list of strings"):
+        load_config(path, {}, require_keys=False)
