@@ -44,6 +44,24 @@
       <button class="btn" type="submit">Save</button>
       {% if saved %}<span class="pmeta" role="status">Saved.</span>{% endif %}
     </form>
+    {% if trackers %}
+    <div class="status-row" aria-label="Issue trackers">
+      {% for t in trackers %}
+        {% if t.existing and t.existing.url.startswith('https://') %}
+          <a class="btn" href="{{ t.existing.url }}" target="_blank" rel="noopener">{{ t.label }} issue {{ t.existing.identifier }}</a>
+        {% elif t.ready %}
+          <form method="post" action="/pain/{{ sel.id }}/issue{{ f.qs() }}">
+            <input type="hidden" name="tracker" value="{{ t.tracker }}">
+            <button class="btn" type="submit" title="Posts the summary, counts and up to 8 message excerpts with Discord links (no author names) to {{ t.target }}">Send to {{ t.label }}</button>
+          </form>
+        {% else %}
+          <button class="btn" type="button" disabled title="{{ t.reason }}">Send to {{ t.label }}</button>
+          <span class="pmeta">{{ t.reason }}</span>
+        {% endif %}
+      {% endfor %}
+      {% if issued %}<span class="pmeta" role="status">{{ issued }}</span>{% endif %}
+    </div>
+    {% endif %}
     {% if comparison %}
     <div class="compare" style="margin-bottom:14px">
       <div class="inv"><span class="label">Before ({{ comparison.days }} days)</span><p>{{ comparison.before.messages }} messages · avg {{ comparison.before.avg_sentiment|signed }}</p></div>

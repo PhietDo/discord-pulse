@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pulse import stats
+from pulse.issues import TrackerError, send_issue, tracker_status
 from pulse.theme_status import LABELS, STATUSES, set_status, shipped_comparison, status_for
 from pulse.web import queries
 from pulse.web.cards import cards_by_ids
@@ -36,12 +37,15 @@ def pain(
     request: Request,
     theme: str | None = None,
     saved: str | None = None,
+    issued: str | None = None,
     conn=Depends(get_conn),
     f: Filters = Depends(get_filters),
 ):
     rows = queries.theme_rows(conn, f, limit=50)
     sel = _selected(conn, theme, rows)
     evidence, comparison = [], None
+    settings = request.app.state.settings
+    trackers = tracker_status(conn, settings.config, sel["id"], env=settings.env) if sel is not None else []
     if sel is not None:
         sample = stats.sample_messages(conn, f.start, f.end, theme_id=sel["id"], limit=8, channels=f.channels)
         evidence = cards_by_ids(conn, [m["message_id"] for m in sample])
@@ -50,6 +54,7 @@ def pain(
         request, "pain.html", conn, f, "pain",
         rows=rows, sel=sel, evidence=evidence, comparison=comparison,
         statuses=[(s, LABELS[s]) for s in STATUSES], saved=bool(saved),
+        trackers=trackers, issued={"created": "Issue created.", "exists": "Already sent; here is the issue."}.get(issued),
     )
 
 
@@ -70,3 +75,29 @@ def save_status(
         raise HTTPException(status_code=404, detail=str(e)) from e
     root = stats.theme_resolution(conn)[theme_id]
     return RedirectResponse(f"/pain{f.qs(theme=root, saved=1)}", status_code=303)
+
+
+@router.post("/pain/{theme_id}/issue")
+def send_to_tracker(
+    request: Request,
+    theme_id: int,
+    tracker: str = Form(...),
+    conn=Depends(get_conn),
+    f: Filters = Depends(get_filters),
+):
+    settings = request.app.state.settings
+    client = settings.http_client_factory() if settings.http_client_factory else None
+    try:
+        result = send_issue(conn, settings.config, theme_id, tracker, f.now, client=client, env=settings.env)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except TrackerError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    finally:
+        if client is not None:
+            client.close()
+    root = stats.theme_resolution(conn)[theme_id]
+    issued = "created" if result["created"] else "exists"
+    return RedirectResponse(f"/pain{f.qs(theme=root, issued=issued)}", status_code=303)

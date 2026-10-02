@@ -4,7 +4,9 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
+
+import httpx
 
 from pulse.agents.llm import LLMClient
 from pulse.config import Config
@@ -23,6 +25,8 @@ class WebSettings:
     clock: Callable[[], datetime] = field(default=_utc_now)
     llm_factory: Callable[[sqlite3.Connection, Config], LLMClient] | None = None
     allowed_hosts: tuple[str, ...] | None = None
+    env: Mapping[str, str] | None = None
+    http_client_factory: Callable[[], httpx.Client] | None = None
 
     @property
     def agents_on(self) -> bool:

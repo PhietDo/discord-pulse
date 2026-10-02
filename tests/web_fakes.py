@@ -84,7 +84,8 @@ def seed(conn) -> None:
 
 
 def make_client(
-    tmp_path: Path, *, seeded=True, llm_factory=None, demo=False, config=CONFIG, allowed_hosts=None, **client_kw
+    tmp_path: Path, *, seeded=True, llm_factory=None, demo=False, config=CONFIG, allowed_hosts=None,
+    env=None, http_client_factory=None, **client_kw
 ) -> TestClient:
     path = tmp_path / "pulse.db"
     conn = connect(path)
@@ -94,6 +95,7 @@ def make_client(
     settings = WebSettings(
         db_path=path, config=config, server_name="Acme SDK Community", demo=demo,
         clock=lambda: NOW, llm_factory=llm_factory, allowed_hosts=allowed_hosts,
+        env=env, http_client_factory=http_client_factory,
     )
     return TestClient(create_app(settings), **client_kw)
 
