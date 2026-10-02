@@ -17,7 +17,7 @@ from pulse.agents.triage import run_triage
 from pulse.agents.theme import run_themes
 from pulse.config import ConfigError, load_config
 from pulse.db import connect
-from pulse.demo import SERVER_NAME, demo_config, seed_demo
+from pulse.demo import SERVER_NAME, demo_config, demo_seeded_at, seed_demo
 from pulse.modqueue import list_open, refresh_mod_queue
 from pulse.pipeline import (
     build_llm,
@@ -108,9 +108,13 @@ def main(argv: list[str] | None = None) -> int:
         if not db.exists():
             print(f"web: {db} not found; run `python -m pulse.run seed-demo` first", file=sys.stderr)
             return 2
+        # The demo's clock starts at seed time and runs from there, so it always looks freshly seeded.
+        server_start = datetime.now(timezone.utc)
+        marker = demo_seeded_at(db) or server_start
         settings = WebSettings(
-            db_path=db, config=demo_config(db, datetime.now(timezone.utc)),
+            db_path=db, config=demo_config(db, marker),
             server_name=args.name or SERVER_NAME, demo=True,
+            clock=lambda: marker + (datetime.now(timezone.utc) - server_start),
         )
         return _serve(settings, args.host, args.port)
     try:

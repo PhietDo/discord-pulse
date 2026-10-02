@@ -175,3 +175,18 @@ def test_web_on_all_interfaces_warns_and_trusts_any_host(tmp_path, monkeypatch, 
     assert main(["web", "--demo", "--db", str(db), "--host", "0.0.0.0"]) == 0
     assert served["app"].state.settings.allowed_hosts is None
     assert "Serving on 0.0.0.0 with no login: anyone on your network can read the dashboard" in capsys.readouterr().err
+
+
+def test_web_demo_clock_starts_at_seed_time(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from pulse.demo import LAUNCH_DAYS_AGO, seed_demo
+
+    db = tmp_path / "demo.db"
+    seeded_at = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=10)
+    seed_demo(db, seeded_at)
+    served = _capture_serve(monkeypatch)
+    assert main(["web", "--demo", "--db", str(db)]) == 0
+    settings = served["app"].state.settings
+    assert abs(settings.clock() - seeded_at) < timedelta(minutes=1)
+    assert settings.config.launches[0].date == (seeded_at - timedelta(days=LAUNCH_DAYS_AGO)).date().isoformat()

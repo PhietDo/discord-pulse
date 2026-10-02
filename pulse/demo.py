@@ -14,7 +14,7 @@ from pathlib import Path
 from pulse.citations import cited_ids
 from pulse.config import AGENTS, Config, Launch, ModelRef, Price
 from pulse.db import connect
-from pulse.models import Message, to_iso
+from pulse.models import Message, from_iso, to_iso
 from pulse.modqueue import refresh_mod_queue
 from pulse.store import sync_launches, upsert_messages
 from pulse.theme_status import set_status
@@ -171,6 +171,18 @@ def is_demo_db(path) -> bool:
         return False
     finally:
         conn.close()
+
+
+def demo_seeded_at(path) -> datetime | None:
+    """When the demo database was seeded (its demo_marker), or None if it has no marker."""
+    if not is_demo_db(path):
+        return None
+    conn = sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True)
+    try:
+        row = conn.execute("SELECT created_at FROM demo_marker LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    return from_iso(row[0]) if row else None
 
 
 def seed_demo(path, now: datetime) -> dict:
