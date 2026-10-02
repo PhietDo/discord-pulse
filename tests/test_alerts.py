@@ -118,3 +118,15 @@ def test_alerts_config_and_cli_dry_run(tmp_path, monkeypatch, capsys):
     path.write_text(CONFIG + '\n[alerts]\nenabled = "yes"\n')
     with pytest.raises(ConfigError, match="enabled"):
         load_config(path)
+
+
+@pytest.mark.parametrize("field", ["spike_min_volume", "spike_trend", "frustrated_hours"])
+def test_alerts_config_rejects_bool_numeric_fields(tmp_path, monkeypatch, field):
+    from pulse.config import ConfigError, load_config
+    from tests.test_cli import CONFIG
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    path = tmp_path / "pulse.toml"
+    path.write_text(CONFIG + f"\n[alerts]\nenabled = true\n{field} = true\n")
+    with pytest.raises(ConfigError, match="not true/false"):
+        load_config(path)

@@ -189,6 +189,10 @@ def _alerts(raw: Any) -> AlertsConfig:
     enabled = raw.get("enabled", False)
     if not isinstance(enabled, bool):
         raise ConfigError(f"[alerts] enabled must be a boolean, got {enabled!r}")
+    if any(isinstance(raw.get(k), bool) for k in ("spike_min_volume", "spike_trend", "frustrated_hours")):
+        raise ConfigError(
+            "[alerts] spike_min_volume, spike_trend and frustrated_hours must be numbers, not true/false"
+        )
     try:
         cfg = AlertsConfig(
             enabled=enabled,
