@@ -131,8 +131,11 @@ def format_themes(stats: ThemeStats) -> str:
 
 def format_alerts(stats: AlertStats) -> str:
     line = f"alerts: {stats.found} found, {stats.sent} sent"
+    if stats.unrecorded:
+        line += f", {stats.unrecorded} sent but not recorded (may repeat next run)"
     if stats.failed:
-        line += f", {stats.failed} failed (will retry)"
+        reason = f"{stats.error}, " if stats.error else ""
+        line += f", {stats.failed} failed ({reason}will retry)"
     if stats.skipped:
         line += f" (not sent: {stats.skipped})"
     return line

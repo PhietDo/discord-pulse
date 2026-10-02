@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Mapping
+from typing import Callable, Mapping
 
 import httpx
 
@@ -20,6 +21,8 @@ from pulse.stats import first_team_reply, sample_messages, theme_scores
 SLACK_ENV = "SLACK_WEBHOOK_URL"
 MAX_PER_RUN = 10
 TIMEOUT = 20.0
+RECORD_RETRIES = 3
+RECORD_RETRY_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -34,7 +37,9 @@ class AlertStats:
     found: int = 0
     sent: int = 0
     failed: int = 0
+    unrecorded: int = 0  # posted to Slack but not saved locally, so it may repeat next run
     skipped: str | None = None
+    error: str | None = None  # why the last post failed, e.g. "HTTP 404"; never the webhook URL
 
 
 def _esc(text: str) -> str:
@@ -89,8 +94,27 @@ def find_alerts(conn: sqlite3.Connection, config: Config, now: datetime) -> list
     return out
 
 
+def _record_alert(conn: sqlite3.Connection, alert: Alert, now: datetime) -> None:
+    with conn:
+        conn.execute("INSERT OR IGNORE INTO alerts_sent (kind, key, sent_at) VALUES (?, ?, ?)",
+                     (alert.kind, alert.key, to_iso(now)))
+
+
+def _record_with_retries(conn, alert: Alert, now: datetime, sleep: Callable[[float], None]) -> bool:
+    for attempt in range(RECORD_RETRIES + 1):
+        try:
+            _record_alert(conn, alert, now)
+            return True
+        except sqlite3.OperationalError:
+            if attempt == RECORD_RETRIES:
+                return False
+            sleep(RECORD_RETRY_SECONDS)
+    return False
+
+
 def send_alerts(conn: sqlite3.Connection, config: Config, now: datetime, *,
-                client: httpx.Client | None = None, env: Mapping[str, str] | None = None) -> AlertStats:
+                client: httpx.Client | None = None, env: Mapping[str, str] | None = None,
+                sleep: Callable[[float], None] = time.sleep) -> AlertStats:
     stats = AlertStats()
     alerts = find_alerts(conn, config, now)
     stats.found = len(alerts)
@@ -106,15 +130,17 @@ def send_alerts(conn: sqlite3.Connection, config: Config, now: datetime, *,
     try:
         for alert in alerts[:MAX_PER_RUN]:
             try:
-                ok = client.post(url, json={"text": alert.text}, timeout=TIMEOUT).status_code < 300
-            except httpx.HTTPError:
-                ok = False
-            if not ok:
+                status = client.post(url, json={"text": alert.text}, timeout=TIMEOUT).status_code
+                error = None if status < 300 else f"HTTP {status}"
+            except httpx.HTTPError as e:
+                error = type(e).__name__  # the message can contain the webhook URL
+            if error:
                 stats.failed += 1
+                stats.error = error
                 break  # the rest go next run
-            with conn:
-                conn.execute("INSERT OR IGNORE INTO alerts_sent (kind, key, sent_at) VALUES (?, ?, ?)",
-                             (alert.kind, alert.key, to_iso(now)))
+            if not _record_with_retries(conn, alert, now, sleep):
+                stats.unrecorded += 1
+                break  # the database is unusable; stop before posting more that cannot be recorded
             stats.sent += 1
     finally:
         if own:

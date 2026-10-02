@@ -84,7 +84,7 @@ def test_failed_post_is_retried_next_run():
     _, bad = slack(500)
     stats = send_alerts(conn, CFG, NOW, client=bad, env={"SLACK_WEBHOOK_URL": "https://hooks.slack.test/x"})
     assert (stats.sent, stats.failed) == (0, 1)
-    assert format_alerts(stats) == "alerts: 2 found, 0 sent, 1 failed (will retry)"
+    assert format_alerts(stats) == "alerts: 2 found, 0 sent, 1 failed (HTTP 500, will retry)"
     calls, good = slack()
     assert send_alerts(conn, CFG, NOW, client=good, env={"SLACK_WEBHOOK_URL": "https://hooks.slack.test/x"}).sent == 2
 
@@ -135,3 +135,38 @@ def test_alerts_config_rejects_bool_numeric_fields(tmp_path, monkeypatch, field)
 def test_frustrated_alerts_ignore_items_older_than_the_lookback():
     assert [a.kind for a in find_alerts(seed(frustrated_age_hours=240), CFG, NOW)] == ["spike"]
     assert [a.kind for a in find_alerts(seed(frustrated_age_hours=13), CFG, NOW)] == ["spike", "frustrated"]
+
+
+def test_failed_post_names_the_error_never_the_url():
+    conn = seed()
+    _, bad = slack(404)
+    stats = send_alerts(conn, CFG, NOW, client=bad, env={"SLACK_WEBHOOK_URL": "https://hooks.slack.test/secret"})
+    assert stats.error == "HTTP 404"
+    assert format_alerts(stats) == "alerts: 2 found, 0 sent, 1 failed (HTTP 404, will retry)"
+
+    def boom(request):
+        raise httpx.ConnectError(f"cannot connect to {request.url}")
+
+    stats = send_alerts(conn, CFG, NOW, client=httpx.Client(transport=httpx.MockTransport(boom)),
+                        env={"SLACK_WEBHOOK_URL": "https://hooks.slack.test/secret"})
+    assert stats.error == "ConnectError"
+    text = format_alerts(stats)
+    assert "1 failed (ConnectError, will retry)" in text and "hooks.slack.test" not in text and "secret" not in text
+
+
+def test_alert_sent_but_not_recorded_stops_the_run(monkeypatch):
+    import sqlite3
+
+    calls, sleeps = [], []
+
+    def record(*args, **kwargs):
+        calls.append(1)
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr("pulse.alerts._record_alert", record)
+    posted, client = slack()
+    stats = send_alerts(seed(), CFG, NOW, client=client, env={"SLACK_WEBHOOK_URL": "https://hooks.slack.test/x"},
+                        sleep=sleeps.append)
+    assert (stats.sent, stats.unrecorded, stats.failed) == (0, 1, 0)
+    assert len(posted) == 1 and len(calls) == 4 and sleeps == [0.5, 0.5, 0.5]
+    assert "1 sent but not recorded" in format_alerts(stats)

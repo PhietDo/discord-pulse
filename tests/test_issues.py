@@ -211,3 +211,58 @@ def test_issue_cli_dry_run_prints_the_draft(tmp_path, monkeypatch, capsys):
     assert main(["--config", cfg, "issue", str(tid), "--to", "github"]) == 1
     assert "GITHUB_TOKEN must be set" in capsys.readouterr().err
     assert main(["--config", cfg, "issue", "999", "--to", "github", "--dry-run"]) == 1
+
+
+def test_issue_draft_defuses_mentions_in_description_and_status_note():
+    from pulse.theme_status import set_status
+
+    conn = connect(":memory:")
+    upsert_messages(conn, [msg("m1", "broken", minutes=0)], frozenset())
+    set_triage(conn, "m1", sentiment=-1, kind="bug")
+    with conn:
+        tid, _ = create_theme(conn, "Pings", "ask @here about it", T0)
+        assign(conn, "m1", tid)
+    set_status(conn, tid, "in_progress", "cc @channel", T0)
+    body = issue_draft(conn, tid, NOW)["body"]
+    assert "@​here" in body and "@​channel" in body
+    assert "@here" not in body and "@channel" not in body
+
+
+def _failing_record(calls):
+    import sqlite3
+
+    def record(*args, **kwargs):
+        calls.append(1)
+        raise sqlite3.OperationalError("database is locked")
+    return record
+
+
+def test_send_issue_retries_a_locked_insert_then_reports_the_created_url(monkeypatch):
+    conn, a, _ = seed()
+    calls, sleeps = [], []
+    monkeypatch.setattr("pulse.issues._record_issue", _failing_record(calls))
+    with pytest.raises(TrackerError, match="created https://github.com/acme/sdk/issues/12 but could not record it"
+                                          " locally: database is locked"):
+        send_issue(conn, make_config(integrations=GH), a, "github", NOW, client=client(github_ok, []),
+                   env={"GITHUB_TOKEN": "x"}, sleep=sleeps.append)
+    assert len(calls) == 4 and sleeps == [0.5, 0.5, 0.5]
+
+
+def test_send_issue_recovers_when_a_retry_succeeds(monkeypatch):
+    import sqlite3
+
+    from pulse import issues as mod
+
+    conn, a, _ = seed()
+    real, calls = mod._record_issue, []
+
+    def flaky(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "_record_issue", flaky)
+    result = send_issue(conn, make_config(integrations=GH), a, "github", NOW, client=client(github_ok, []),
+                        env={"GITHUB_TOKEN": "x"}, sleep=lambda s: None)
+    assert result["created"] is True and len(calls) == 2
