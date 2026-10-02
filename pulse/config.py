@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 from datetime import date
@@ -71,6 +72,13 @@ class ClassifierConfig:
 
 
 @dataclass(frozen=True)
+class IntegrationsConfig:
+    github_repo: str | None = None
+    github_labels: tuple[str, ...] = ()
+    linear_team_id: str | None = None
+
+
+@dataclass(frozen=True)
 class Config:
     guild_id: str
     channel_ids: tuple[str, ...]
@@ -85,6 +93,7 @@ class Config:
     imports_dir: Path
     classifier: ClassifierConfig | None = None
     bot_backfill_days: int = 30
+    integrations: IntegrationsConfig = IntegrationsConfig()
 
 
 def _price(name: str, raw: Any) -> Price:
@@ -142,6 +151,20 @@ def _classifier(raw: Any, env: Mapping[str, str], require_keys: bool = True) -> 
     return cfg
 
 
+def _integrations(raw: Any) -> IntegrationsConfig:
+    raw = raw or {}
+    github, linear = raw.get("github") or {}, raw.get("linear") or {}
+    repo = github.get("repo")
+    if repo is not None and not re.fullmatch(r"[\w.-]+/[\w.-]+", str(repo)):
+        raise ConfigError(f"[integrations.github] repo must look like owner/name, got {repo!r}")
+    team = linear.get("team_id")
+    return IntegrationsConfig(
+        github_repo=str(repo) if repo else None,
+        github_labels=tuple(str(x) for x in github.get("labels", [])),
+        linear_team_id=str(team) if team else None,
+    )
+
+
 def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, require_keys: bool = True) -> Config:
     path = Path(path)
     env = os.environ if env is None else env
@@ -195,6 +218,7 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, requi
         imports_dir=base / paths.get("imports", "imports"),
         classifier=_classifier(raw.get("classifier"), env, require_keys),
         bot_backfill_days=backfill_days,
+        integrations=_integrations(raw.get("integrations")),
     )
 
 

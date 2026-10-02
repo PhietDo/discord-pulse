@@ -100,6 +100,17 @@ Both read only channels the bot can see, narrowed by `[server] channel_ids`. A c
 
 launchd does not see your shell's environment, so each job loads `~/.config/discord-pulse/env` (change it with `--env-file`) before it runs. Put `export NAME=value` lines for the keys you use in that file and keep it `chmod 600`; the keys are never copied into the plists. Logs go to `logs/` next to `pulse.toml`.
 
+## Send a pain point to GitHub or Linear
+
+Add `[integrations.github]` (`repo`, optional `labels`) or `[integrations.linear]` (`team_id`) to `pulse.toml` and set `GITHUB_TOKEN` (a fine-grained token with Issues: write on that repo) or `LINEAR_API_KEY`. Then use the button on a pain point, or:
+
+```bash
+.venv/bin/python -m pulse.run issue 7 --to github --dry-run   # see exactly what would be posted
+.venv/bin/python -m pulse.run issue 7 --to github
+```
+
+The issue holds the pain point's summary, counts, status and up to 8 message excerpts with Discord links. It names no authors, and `@` mentions are defused. Each pain point is sent at most once per tracker; asking again returns the existing link. Check `--dry-run` before posting to a public repo.
+
 ## Themes, digests, investigations
 
 ```bash

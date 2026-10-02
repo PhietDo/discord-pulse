@@ -22,6 +22,7 @@ from pulse.agents.theme import run_themes
 from pulse.config import ConfigError, load_config
 from pulse.db import connect
 from pulse.demo import SERVER_NAME, demo_config, demo_seeded_at, seed_demo
+from pulse.issues import TRACKER_LABELS, TrackerError, issue_draft, send_issue
 from pulse.modqueue import list_open, refresh_mod_queue
 from pulse.pipeline import (
     build_llm,
@@ -71,6 +72,10 @@ def _parser() -> argparse.ArgumentParser:
     seed = sub.add_parser("seed-demo", help="write a synthetic community to a demo database")
     seed.add_argument("--db", default="demo.db")
     sub.add_parser("bot", help="run the read-only bot: catch up, then stream new messages (Ctrl-C to stop)")
+    issue = sub.add_parser("issue", help="send a pain point to GitHub or Linear as an issue")
+    issue.add_argument("theme", type=int, help="theme id (shown in the dashboard's Pain points link)")
+    issue.add_argument("--to", choices=("github", "linear"), required=True)
+    issue.add_argument("--dry-run", action="store_true", help="print the issue instead of sending it")
     invite = sub.add_parser("bot-invite", help="print the invite link that asks only for read access")
     invite.add_argument("--client-id", required=True, help="the Application ID from the Discord Developer Portal")
     sched = sub.add_parser("schedule", help="install launchd jobs: pipeline every 30 min, weekly digest, optional bot")
@@ -249,6 +254,18 @@ def main(argv: list[str] | None = None) -> int:
 
         streamer = run_streamer(token, config, conn)
         print(f"bot stopped: {streamer.received} live messages received, {streamer.written} written")
+    elif args.command == "issue":
+        try:
+            if args.dry_run:
+                draft = issue_draft(conn, args.theme, now)
+                print(draft["title"] + "\n\n" + draft["body"])
+                return 0
+            result = send_issue(conn, config, args.theme, args.to, now)
+        except (LookupError, TrackerError) as e:
+            print(f"issue: {e.args[0]}", file=sys.stderr)
+            return 1
+        verb = "created" if result["created"] else "already sent:"
+        print(f"{verb} {TRACKER_LABELS[args.to]} issue {result['identifier']}: {result['url']}")
     elif args.command == "web":
         conn.close()
         settings = WebSettings(

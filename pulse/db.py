@@ -77,6 +77,15 @@ CREATE TABLE IF NOT EXISTS theme_status (
     shipped_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS theme_issues (
+    theme_id INTEGER NOT NULL REFERENCES themes(id),
+    tracker TEXT NOT NULL CHECK (tracker IN ('github', 'linear')),
+    url TEXT NOT NULL,
+    identifier TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (theme_id, tracker)
+);
+
 CREATE TABLE IF NOT EXISTS message_themes (
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     theme_id INTEGER NOT NULL REFERENCES themes(id),

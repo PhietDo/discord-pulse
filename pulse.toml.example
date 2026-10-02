@@ -63,3 +63,11 @@ per_request = 0.0000387
 [bot]
 # For a channel the bot has never read, how far back the first backfill goes.
 backfill_days = 30
+
+# Send a pain point to an issue tracker from the dashboard or `pulse.run issue`.
+# Tokens come from GITHUB_TOKEN / LINEAR_API_KEY, never from this file.
+# [integrations.github]
+# repo = "your-org/your-repo"
+# labels = ["community"]
+# [integrations.linear]
+# team_id = "your-team-uuid"

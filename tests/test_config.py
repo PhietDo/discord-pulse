@@ -223,3 +223,22 @@ def test_require_keys_false_skips_env_checks(tmp_path):
     assert config.classifier.enabled
     assert missing_keys(config, {"OPENAI_API_KEY": "x"}) == ["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"]
     assert missing_keys(config, {"OPENAI_API_KEY": "x", "ANTHROPIC_API_KEY": "y", "OPENROUTER_API_KEY": "z"}) == []
+
+
+def test_integrations_section(tmp_path):
+    from pulse.config import ConfigError, IntegrationsConfig, load_config
+
+    base = (
+        '[server]\nguild_id = "1"\n[models]\ntriage = "anthropic:m"\ntheme = "anthropic:m"\n'
+        'digest = "anthropic:m"\ninvestigate = "anthropic:m"\n[pricing."anthropic:m"]\ninput = 1\noutput = 2\n'
+    )
+    path = tmp_path / "pulse.toml"
+    path.write_text(base)
+    assert load_config(path, {}, require_keys=False).integrations == IntegrationsConfig()
+    path.write_text(base + '[integrations.github]\nrepo = "acme/sdk"\nlabels = ["community"]\n'
+                           '[integrations.linear]\nteam_id = "abc-123"\n')
+    cfg = load_config(path, {}, require_keys=False).integrations
+    assert (cfg.github_repo, cfg.github_labels, cfg.linear_team_id) == ("acme/sdk", ("community",), "abc-123")
+    path.write_text(base + '[integrations.github]\nrepo = "not a repo"\n')
+    with pytest.raises(ConfigError, match="owner/name"):
+        load_config(path, {}, require_keys=False)
