@@ -103,3 +103,22 @@ def test_launch_digest_in_background(tmp_path):
     conn = connect(tmp_path / "pulse.db")
     assert conn.execute("SELECT kind FROM digests ORDER BY id DESC LIMIT 1").fetchone()["kind"] == "launch"
     assert client.post("/launch/99/digest").status_code == 404
+
+
+def test_digest_over_the_cap_shows_failed_banner(tmp_path):
+    from dataclasses import replace
+
+    from pulse.agents.llm import LLMClient
+    from tests.fakes import FakeBackend
+
+    backend = FakeBackend(handler=cite_first_and_bogus)
+
+    def factory(conn, config):  # the LLMClient's clock matches the dashboard's
+        return LLMClient(conn, config, {"anthropic": backend}, now=lambda: NOW, sleep=lambda s: None)
+
+    client = make_client(tmp_path, llm_factory=factory, config=replace(CONFIG, daily_usd_cap=0.0))
+    r = client.post("/reports/digest", follow_redirects=False)
+    assert r.status_code == 303 and f"pending={int(NOW.timestamp())}" in r.headers["location"]
+    page = client.get(r.headers["location"]).text
+    assert "The digest failed: the daily budget cap was reached" in page
+    assert backend.calls == []  # refused before any model call

@@ -79,7 +79,7 @@ List the mod queue, highest priority first, with links to each message:
 
 All agents share `[budget] daily_usd_cap`.
 
-- `digest` calls the `[models] digest` model once per digest (in the example config, the priciest tier). A period with no community messages is saved without a model call.
+- `digest` calls the `[models] digest` model once per digest (in the example config, the priciest tier). A period with no community messages and no open mod queue items is saved without a model call.
 - `investigate` makes up to 13 model steps (12 tool calls plus a final answer), each re-sending a growing transcript. On a mid-tier model, budget roughly 10-25% of a $5 day per question.
 - `themes` runs Jev once per candidate message (when the classifier is enabled and themes exist), plus one `theme` model call per 60 leftover messages.
 

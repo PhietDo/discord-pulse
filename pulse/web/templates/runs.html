@@ -19,8 +19,8 @@
   <section class="panel">
     <div class="panel-head"><h2>Cost per day</h2><span class="note">last 14 days, UTC</span></div>
     <div class="tbl-wrap"><table class="chan">
-      <thead><tr><th>Day</th><th class="num">Runs</th><th class="num">Failed</th><th class="num">Cost</th></tr></thead>
-      <tbody>{% for d in days|reverse %}<tr><td class="where">{{ d.day }}</td><td class="num">{{ d.runs }}</td><td class="num {{ 'neg' if d.failed else 'mut' }}">{{ d.failed }}</td><td class="num">${{ "%.2f"|format(d.cost) }}</td></tr>{% endfor %}</tbody>
+      <thead><tr><th>Day</th><th class="num">Runs</th><th class="num">Failed</th><th class="num">Skipped</th><th class="num">Cost</th></tr></thead>
+      <tbody>{% for d in days|reverse %}<tr><td class="where">{{ d.day }}</td><td class="num">{{ d.runs }}</td><td class="num {{ 'neg' if d.failed else 'mut' }}">{{ d.failed }}</td><td class="num {{ 'warnc' if d.skipped else 'mut' }}">{{ d.skipped }}</td><td class="num">${{ "%.2f"|format(d.cost) }}</td></tr>{% endfor %}</tbody>
     </table></div>
   </section>
 </div>
