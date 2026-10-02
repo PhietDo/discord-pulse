@@ -5,6 +5,7 @@ import argparse
 import importlib.util
 import ipaddress
 import os
+import plistlib
 import sys
 from dataclasses import replace
 from datetime import date, datetime, timezone
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import uvicorn
 
+from pulse import schedule
 from pulse.agents.base import BudgetExceeded, LLMError
 from pulse.agents.digest import run_digest
 from pulse.agents.investigate import run_investigation
@@ -71,6 +73,11 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("bot", help="run the read-only bot: catch up, then stream new messages (Ctrl-C to stop)")
     invite = sub.add_parser("bot-invite", help="print the invite link that asks only for read access")
     invite.add_argument("--client-id", required=True, help="the Application ID from the Discord Developer Portal")
+    sched = sub.add_parser("schedule", help="install launchd jobs: pipeline every 30 min, weekly digest, optional bot")
+    sched.add_argument("action", choices=("install", "uninstall", "show"))
+    sched.add_argument("--with-bot", action="store_true", help="also keep the live bot running")
+    sched.add_argument("--env-file", type=Path, default=schedule.DEFAULT_ENV_FILE,
+                       help="file of KEY=value lines the jobs load at start (never copied into the plists)")
     return parser
 
 
@@ -112,6 +119,37 @@ def _serve(settings: WebSettings, host: str, port: int) -> int:
     return 0
 
 
+def _schedule(args) -> int:
+    config = Path(args.config).expanduser().resolve()
+    if not config.exists():
+        print(f"schedule: {config} not found", file=sys.stderr)
+        return 2
+    names = ["pipeline", "digest"] + (["bot"] if args.with_bot else [])
+    common = dict(python=Path(sys.executable), config=config, env_file=args.env_file.expanduser(),
+                  log_dir=config.parent / "logs")
+    if args.action == "show":
+        for name in names:
+            print(plistlib.dumps(schedule.build_plist(schedule.JOBS[name], **common)).decode())
+        return 0
+    if args.action == "uninstall":
+        removed = schedule.uninstall(["pipeline", "digest", "bot"], agents_dir=schedule.AGENTS_DIR,
+                                     runner=schedule.run_launchctl)
+        print("removed: " + (", ".join(str(p) for p in removed) or "nothing was installed"))
+        return 0
+    if not common["env_file"].exists():
+        print(f"schedule: warning: {common['env_file']} not found; jobs will start without API keys",
+              file=sys.stderr)
+    try:
+        paths = schedule.install(names, agents_dir=schedule.AGENTS_DIR, runner=schedule.run_launchctl, **common)
+    except schedule.ScheduleError as e:
+        print(f"schedule: {e}", file=sys.stderr)
+        return 1
+    for p in paths:
+        print(f"installed {p}")
+    print(f"logs: {common['log_dir']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
@@ -124,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         print("Asks for View Channels and Read Message History only. "
               "Open it as someone with Manage Server on the community server.")
         return 0
+    if args.command == "schedule":
+        return _schedule(args)
     if args.command == "seed-demo":
         try:
             counts = seed_demo(args.db, datetime.now(timezone.utc))

@@ -90,6 +90,16 @@ export DISCORD_BOT_TOKEN=...                                   # from the Develo
 
 Both read only channels the bot can see, narrowed by `[server] channel_ids`. A channel read for the first time goes back `[bot] backfill_days` (default 30); after that each run continues from the last stored message, so a restart or disconnect never leaves a gap. Edits to messages the bot saw while running replace the old text and re-queue them for triage. `pipeline` and the dashboard work the same whether messages came from exports or the bot.
 
+## Scheduled runs (macOS)
+
+```bash
+.venv/bin/python -m pulse.run schedule show                 # print the launchd jobs without installing
+.venv/bin/python -m pulse.run schedule install [--with-bot] # pipeline every 30 min, digest Mondays 09:00
+.venv/bin/python -m pulse.run schedule uninstall
+```
+
+launchd does not see your shell's environment, so each job loads `~/.config/discord-pulse/env` (change it with `--env-file`) before it runs. Put `export NAME=value` lines for the keys you use in that file and keep it `chmod 600`; the keys are never copied into the plists. Logs go to `logs/` next to `pulse.toml`.
+
 ## Themes, digests, investigations
 
 ```bash
