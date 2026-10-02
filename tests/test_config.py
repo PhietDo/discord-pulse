@@ -270,3 +270,36 @@ def test_integrations_rejects_non_list_labels(tmp_path, labels_toml):
     path.write_text(base + f'[integrations.github]\nrepo = "acme/sdk"\n{labels_toml}\n')
     with pytest.raises(ConfigError, match="labels must be a list of strings"):
         load_config(path, {}, require_keys=False)
+
+
+_MIN = (
+    '[server]\nguild_id = "1"\n[models]\ntriage = "anthropic:m"\ntheme = "anthropic:m"\n'
+    'digest = "anthropic:m"\ninvestigate = "anthropic:m"\n[pricing."anthropic:m"]\ninput = 1\noutput = 2\n'
+)
+
+
+@pytest.mark.parametrize("extra, match", [
+    ("alerts = true\n", r"\[alerts\] must be a table"),
+    ("bot = 5\n", r"\[bot\] must be a table"),
+    ("integrations = 5\n", r"\[integrations\] must be a table"),
+    ('[integrations]\ngithub = "org/repo"\n', r"\[integrations.github\] must be a table"),
+    ('[integrations]\nlinear = "abc"\n', r"\[integrations.linear\] must be a table"),
+    ('[alerts]\nspike_min_volume = "5"\n', "spike_min_volume must be a whole number"),
+    ("[alerts]\nspike_min_volume = 5.7\n", "spike_min_volume must be a whole number"),
+    ('[alerts]\nspike_trend = "nan"\n', "spike_trend must be a number"),
+    ("[alerts]\nspike_trend = nan\n", "spike_trend must be a finite number"),
+    ("[alerts]\nfrustrated_hours = inf\n", "frustrated_hours must be a finite number"),
+    ("[integrations.linear]\nteam_id = [1]\n", r"\[integrations.linear\] team_id must be a string"),
+])
+def test_config_rejects_wrong_section_and_value_types(tmp_path, extra, match):
+    path = tmp_path / "pulse.toml"
+    path.write_text(extra + _MIN)  # first, so top-level keys stay top-level
+    with pytest.raises(ConfigError, match=match):
+        load_config(path, {}, require_keys=False)
+
+
+def test_config_accepts_numeric_alert_values(tmp_path):
+    path = tmp_path / "pulse.toml"
+    path.write_text(_MIN + "[alerts]\nspike_min_volume = 3\nspike_trend = 2\nfrustrated_hours = 6.5\n")
+    a = load_config(path, {}, require_keys=False).alerts
+    assert (a.spike_min_volume, a.spike_trend, a.frustrated_hours) == (3, 2.0, 6.5)

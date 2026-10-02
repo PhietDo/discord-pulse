@@ -1,6 +1,7 @@
 """Load and validate pulse.toml."""
 from __future__ import annotations
 
+import math
 import os
 import re
 import tomllib
@@ -167,9 +168,19 @@ def _valid_repo(repo: str) -> bool:
     return owner not in (".", "..") and name not in (".", "..")
 
 
+def _table(raw: Any, name: str) -> dict:
+    """A [section] that may be absent; present but not a table is a config error."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"[{name}] must be a table (a [{name}] section), got {raw!r}")
+    return raw
+
+
 def _integrations(raw: Any) -> IntegrationsConfig:
-    raw = raw or {}
-    github, linear = raw.get("github") or {}, raw.get("linear") or {}
+    raw = _table(raw, "integrations")
+    github = _table(raw.get("github"), "integrations.github")
+    linear = _table(raw.get("linear"), "integrations.linear")
     repo = github.get("repo")
     if repo is not None and not _valid_repo(str(repo)):
         raise ConfigError(f"[integrations.github] repo must look like owner/name, got {repo!r}")
@@ -177,6 +188,8 @@ def _integrations(raw: Any) -> IntegrationsConfig:
     if not isinstance(labels, list) or not all(isinstance(x, str) for x in labels):
         raise ConfigError("[integrations.github] labels must be a list of strings")
     team = linear.get("team_id")
+    if team is not None and not isinstance(team, str):
+        raise ConfigError(f"[integrations.linear] team_id must be a string, got {team!r}")
     return IntegrationsConfig(
         github_repo=str(repo) if repo else None,
         github_labels=tuple(labels),
@@ -184,24 +197,29 @@ def _integrations(raw: Any) -> IntegrationsConfig:
     )
 
 
+def _alert_number(raw: dict, name: str, default: float) -> float:
+    value = raw.get(name, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"[alerts] {name} must be a number, not true/false or text, got {value!r}")
+    if not math.isfinite(value):
+        raise ConfigError(f"[alerts] {name} must be a finite number, got {value!r}")
+    return float(value)
+
+
 def _alerts(raw: Any) -> AlertsConfig:
-    raw = raw or {}
+    raw = _table(raw, "alerts")
     enabled = raw.get("enabled", False)
     if not isinstance(enabled, bool):
         raise ConfigError(f"[alerts] enabled must be a boolean, got {enabled!r}")
-    if any(isinstance(raw.get(k), bool) for k in ("spike_min_volume", "spike_trend", "frustrated_hours")):
-        raise ConfigError(
-            "[alerts] spike_min_volume, spike_trend and frustrated_hours must be numbers, not true/false"
-        )
-    try:
-        cfg = AlertsConfig(
-            enabled=enabled,
-            spike_min_volume=int(raw.get("spike_min_volume", 5)),
-            spike_trend=float(raw.get("spike_trend", 1.0)),
-            frustrated_hours=float(raw.get("frustrated_hours", 12.0)),
-        )
-    except (TypeError, ValueError) as e:
-        raise ConfigError(f"[alerts] spike_min_volume, spike_trend and frustrated_hours must be numbers: {e}") from e
+    volume = raw.get("spike_min_volume", 5)
+    if isinstance(volume, bool) or not isinstance(volume, int):
+        raise ConfigError(f"[alerts] spike_min_volume must be a whole number, not true/false or text, got {volume!r}")
+    cfg = AlertsConfig(
+        enabled=enabled,
+        spike_min_volume=volume,
+        spike_trend=_alert_number(raw, "spike_trend", 1.0),
+        frustrated_hours=_alert_number(raw, "frustrated_hours", 12.0),
+    )
     if cfg.spike_min_volume < 1 or cfg.spike_trend < 0 or cfg.frustrated_hours <= 0:
         raise ConfigError("[alerts] spike_min_volume must be at least 1 and the other values positive")
     return cfg
@@ -242,7 +260,7 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, requi
     paths = raw.get("paths", {})
     base = path.parent
 
-    backfill_days = raw.get("bot", {}).get("backfill_days", 30)
+    backfill_days = _table(raw.get("bot"), "bot").get("backfill_days", 30)
     if isinstance(backfill_days, bool) or not isinstance(backfill_days, int) or backfill_days < 1:
         raise ConfigError(f"[bot] backfill_days must be a whole number of days, at least 1, got {backfill_days!r}")
 
