@@ -22,6 +22,7 @@ class WebSettings:
     demo: bool = False
     clock: Callable[[], datetime] = field(default=_utc_now)
     llm_factory: Callable[[sqlite3.Connection, Config], LLMClient] | None = None
+    allowed_hosts: tuple[str, ...] | None = None
 
     @property
     def agents_on(self) -> bool:

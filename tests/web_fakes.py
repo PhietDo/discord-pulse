@@ -83,7 +83,9 @@ def seed(conn) -> None:
     refresh_mod_queue(conn, CONFIG, NOW)
 
 
-def make_client(tmp_path: Path, *, seeded=True, llm_factory=None, demo=False, config=CONFIG) -> TestClient:
+def make_client(
+    tmp_path: Path, *, seeded=True, llm_factory=None, demo=False, config=CONFIG, allowed_hosts=None, **client_kw
+) -> TestClient:
     path = tmp_path / "pulse.db"
     conn = connect(path)
     if seeded:
@@ -91,9 +93,9 @@ def make_client(tmp_path: Path, *, seeded=True, llm_factory=None, demo=False, co
     conn.close()
     settings = WebSettings(
         db_path=path, config=config, server_name="Acme SDK Community", demo=demo,
-        clock=lambda: NOW, llm_factory=llm_factory,
+        clock=lambda: NOW, llm_factory=llm_factory, allowed_hosts=allowed_hosts,
     )
-    return TestClient(create_app(settings))
+    return TestClient(create_app(settings), **client_kw)
 
 
 def fake_llm_factory(handler):

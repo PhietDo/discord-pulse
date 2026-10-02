@@ -44,10 +44,18 @@ def start_investigation(
     if f.channel:
         context["channel_id"] = f.channel
     context["days"] = f.days
-    with conn:
-        inv_id = int(conn.execute(
-            "INSERT INTO investigations (question, context, created_at) VALUES (?, ?, ?)",
-            (question, json.dumps(context), to_iso(f.now)),
-        ).lastrowid)
-    background.add_task(jobs.run_investigation_job, request.app.state.settings, inv_id, question, context)
+    slots = request.app.state.job_slots
+    slots.take_investigation()
+    try:
+        with conn:
+            inv_id = int(conn.execute(
+                "INSERT INTO investigations (question, context, created_at) VALUES (?, ?, ?)",
+                (question, json.dumps(context), to_iso(f.now)),
+            ).lastrowid)
+    except BaseException:
+        slots.release("investigations")
+        raise
+    background.add_task(
+        slots.wrap("investigations", jobs.run_investigation_job), request.app.state.settings, inv_id, question, context
+    )
     return RedirectResponse(f"/reports/investigation/{inv_id}{f.qs()}", status_code=303)

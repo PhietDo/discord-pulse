@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import sys
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -65,7 +67,23 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
+
+
+def _is_loopback(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
 def _serve(settings: WebSettings, host: str, port: int) -> int:
+    if _is_loopback(host):
+        settings = replace(settings, allowed_hosts=LOCAL_HOSTS)
+    else:
+        print(f"Serving on {host} with no login: anyone on your network can read the dashboard", file=sys.stderr)
     print(f"Discord Pulse dashboard on http://{host}:{port}")
     uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
     return 0

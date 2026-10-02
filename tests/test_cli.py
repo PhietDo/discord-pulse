@@ -155,3 +155,23 @@ def test_web_with_config_turns_agents_on(tmp_path, monkeypatch):
     settings = served["app"].state.settings
     assert settings.agents_on and not settings.demo and settings.server_name == "Acme"
     assert settings.db_path.name == "pulse.db"
+
+
+def test_web_on_loopback_only_trusts_local_host_names(tmp_path, monkeypatch, capsys):
+    db = tmp_path / "demo.db"
+    assert main(["seed-demo", "--db", str(db)]) == 0
+    served = _capture_serve(monkeypatch)
+    for host in ("127.0.0.1", "localhost", "::1"):
+        capsys.readouterr()
+        assert main(["web", "--demo", "--db", str(db), "--host", host]) == 0
+        assert served["app"].state.settings.allowed_hosts == ("127.0.0.1", "localhost", "[::1]", "::1")
+        assert "no login" not in capsys.readouterr().err
+
+
+def test_web_on_all_interfaces_warns_and_trusts_any_host(tmp_path, monkeypatch, capsys):
+    db = tmp_path / "demo.db"
+    assert main(["seed-demo", "--db", str(db)]) == 0
+    served = _capture_serve(monkeypatch)
+    assert main(["web", "--demo", "--db", str(db), "--host", "0.0.0.0"]) == 0
+    assert served["app"].state.settings.allowed_hosts is None
+    assert "Serving on 0.0.0.0 with no login: anyone on your network can read the dashboard" in capsys.readouterr().err

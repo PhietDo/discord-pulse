@@ -58,5 +58,7 @@ def write_launch_digest(
         raise HTTPException(status_code=404, detail="No such launch")
     if row["date"] > f.now.date().isoformat():
         raise HTTPException(status_code=400, detail="This launch hasn't happened yet")
-    background.add_task(jobs.run_digest_job, request.app.state.settings, row["name"])
+    slots = request.app.state.job_slots
+    slots.take_digest()
+    background.add_task(slots.wrap("digests", jobs.run_digest_job), request.app.state.settings, row["name"])
     return RedirectResponse(f"/reports{f.qs(pending=int(f.now.timestamp()))}", status_code=303)

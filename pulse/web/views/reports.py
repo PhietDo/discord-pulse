@@ -39,7 +39,9 @@ def reports(request: Request, pending: str | None = None, conn=Depends(get_conn)
 def write_weekly(request: Request, background: BackgroundTasks, f: Filters = Depends(get_filters)):
     require_agents(request)
     settings = request.app.state.settings
-    background.add_task(jobs.run_digest_job, settings, None)
+    slots = request.app.state.job_slots
+    slots.take_digest()
+    background.add_task(slots.wrap("digests", jobs.run_digest_job), settings, None)
     return RedirectResponse(f"/reports{f.qs(pending=int(f.now.timestamp()))}", status_code=303)
 
 
