@@ -27,6 +27,7 @@ class WebSettings:
     allowed_hosts: tuple[str, ...] | None = None
     env: Mapping[str, str] | None = None
     http_client_factory: Callable[[], httpx.Client] | None = None
+    agents_off_reason: str | None = None
 
     @property
     def agents_on(self) -> bool:
@@ -34,4 +35,6 @@ class WebSettings:
 
     @property
     def agents_off_text(self) -> str:
-        return "Agents are off in demo mode" if self.demo else "Agents are off"
+        if self.demo:
+            return "Agents are off in demo mode"
+        return self.agents_off_reason or "Agents are off"

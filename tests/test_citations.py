@@ -94,3 +94,10 @@ def test_render_html_drops_unsafe_link_schemes_and_images():
     assert "<img" not in out
     assert "javascript" not in out.lower() and "data:" not in out
     assert '<a href="https://example.com">docs</a>' in out
+
+
+def test_protocol_relative_links_are_dropped():
+    from pulse.citations import safe_href
+
+    assert not safe_href("//evil.com/x") and not safe_href("/\\evil.com") and not safe_href(" //evil.com")
+    assert safe_href("/pain?theme=1") and safe_href("#top") and safe_href("https://example.com")

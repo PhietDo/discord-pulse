@@ -205,6 +205,40 @@ def test_ingest_from_bot_needs_the_extra_and_a_token(tmp_path, monkeypatch, caps
     assert "DISCORD_BOT_TOKEN must be set" in capsys.readouterr().err
 
 
+def _capture_app(monkeypatch):
+    captured = {}
+    monkeypatch.setattr("pulse.run.uvicorn.run", lambda app, **kw: captured.update(app=app, **kw))
+    return captured
+
+
+def test_web_starts_without_keys_with_agents_off(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    captured = _capture_app(monkeypatch)
+    assert main(["--config", str(tmp_path / "pulse.toml"), "web"]) == 0
+    settings = captured["app"].state.settings
+    assert not settings.agents_on
+    assert settings.agents_off_text == "Agents are off: set ANTHROPIC_API_KEY"
+
+
+def test_model_commands_still_require_keys(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    assert main(["--config", str(tmp_path / "pulse.toml"), "triage"]) == 2
+    assert "ANTHROPIC_API_KEY must be set" in capsys.readouterr().err
+    assert main(["--config", str(tmp_path / "pulse.toml"), "modqueue"]) == 0
+
+
+def test_web_trusts_the_bound_loopback_address(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    captured = _capture_app(monkeypatch)
+    assert main(["--config", str(tmp_path / "pulse.toml"), "web", "--host", "127.0.0.5"]) == 0
+    assert "127.0.0.5" in captured["app"].state.settings.allowed_hosts
+    assert main(["--config", str(tmp_path / "pulse.toml"), "web", "--host", "::1"]) == 0
+    assert "[::1]" in captured["app"].state.settings.allowed_hosts
+
+
 def test_bot_backfill_days_config(tmp_path, monkeypatch):
     from pulse.config import ConfigError, load_config
 

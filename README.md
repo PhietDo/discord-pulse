@@ -51,6 +51,7 @@ Views: Overview, Pain points, Bugs, Mod queue, Messages, Launch, Reports, Runs. 
 - **Investigate and digests from the dashboard** run in the background and the page updates when they finish. They spend from the same daily cap as the pipeline; the Runs view shows every call and its cost.
 - Messages imported before this version count under their own thread id when you filter by channel; re-run `ingest` once to attach threads to their parent channel.
 - The dashboard has no login. It binds to 127.0.0.1 by default; don't expose it to the internet.
+- `web` starts without provider keys; the agent buttons are then off and say which key to set.
 
 ## Jev first pass (optional)
 

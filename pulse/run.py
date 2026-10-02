@@ -20,7 +20,7 @@ from pulse.agents.investigate import run_investigation
 from pulse.agents.triage import run_triage
 from pulse.agents.theme import run_themes
 from pulse.alerts import find_alerts, send_alerts
-from pulse.config import ConfigError, load_config
+from pulse.config import ConfigError, load_config, missing_keys
 from pulse.db import connect
 from pulse.demo import SERVER_NAME, demo_config, demo_seeded_at, seed_demo
 from pulse.issues import TRACKER_LABELS, TrackerError, issue_draft, send_issue
@@ -91,6 +91,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
+MODEL_COMMANDS = ("triage", "pipeline", "themes", "digest", "investigate")
 
 
 def _is_loopback(host: str) -> bool:
@@ -120,7 +121,9 @@ def _bot_token() -> str | None:
 
 def _serve(settings: WebSettings, host: str, port: int) -> int:
     if _is_loopback(host):
-        settings = replace(settings, allowed_hosts=LOCAL_HOSTS)
+        bound = host.strip("[]")
+        extra = (bound, f"[{bound}]") if ":" in bound else (bound,)
+        settings = replace(settings, allowed_hosts=tuple(dict.fromkeys(LOCAL_HOSTS + extra)))
     else:
         print(f"Serving on {host} with no login: anyone on your network can read the dashboard", file=sys.stderr)
     print(f"Discord Pulse dashboard on http://{host}:{port}")
@@ -197,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return _serve(settings, args.host, args.port)
     try:
-        config = load_config(args.config)
+        config = load_config(args.config, require_keys=args.command in MODEL_COMMANDS)
     except ConfigError as e:
         print(f"config error: {e}", file=sys.stderr)
         return 2
@@ -278,9 +281,12 @@ def main(argv: list[str] | None = None) -> int:
             print(format_alerts(send_alerts(conn, config, now)))
     elif args.command == "web":
         conn.close()
+        missing = missing_keys(config)
         settings = WebSettings(
             db_path=Path(args.db) if args.db else config.db_path, config=config,
-            server_name=args.name or "Discord server", llm_factory=build_llm,
+            server_name=args.name or "Discord server",
+            llm_factory=None if missing else build_llm,
+            agents_off_reason=f"Agents are off: set {', '.join(missing)}" if missing else None,
         )
         return _serve(settings, args.host, args.port)
     return 0

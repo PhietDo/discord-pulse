@@ -76,8 +76,11 @@ _URL_JUNK_RE = re.compile(r"[\x00-\x20\x7f]+")
 
 
 def safe_href(value: str) -> bool:
-    """True for http(s), mailto, site-relative (/...) and fragment (#...) links."""
+    """True for http(s), mailto, site-relative (/...) and fragment (#...) links.
+    Protocol-relative //host and /\\host are rejected: browsers treat them as another site."""
     url = _URL_JUNK_RE.sub("", value).lower()
+    if url.startswith(("//", "/\\")):
+        return False
     return url.startswith(_SAFE_SCHEMES) or url.startswith(("/", "#"))
 
 
