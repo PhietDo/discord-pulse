@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Runs{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Runs</h1><p class="sub">Every model call the agents made: cost, tokens and failures. The daily cap resets at midnight UTC.</p></div>
+  <div class="chips" role="group" aria-label="Filter runs">
+    <a class="chip" href="/runs{{ f.qs() }}"{% if not status %} aria-current="true"{% endif %}>All</a>
+    <a class="chip" href="/runs{{ f.qs(status='failed') }}"{% if status == 'failed' %} aria-current="true"{% endif %}>Failed</a>
+    <a class="chip" href="/runs{{ f.qs(status='skipped_budget') }}"{% if status == 'skipped_budget' %} aria-current="true"{% endif %}>Skipped by cap</a>
+  </div>
+</div>
+<div class="grid2">
+  <section class="panel">
+    <div class="panel-head"><h2>Spend today</h2></div>
+    <p class="big" style="margin:0">${{ "%.2f"|format(spent) }} <span class="pmeta">of ${{ "%.2f"|format(cap) }}</span></p>
+    {% set pct = ((spent / cap * 100) if cap > 0 else 0)|round|int %}
+    <div class="share" style="margin-top:10px"><div class="track" style="max-width:none"><div class="fill" style="width:{{ [pct, 100]|min }}%;background:{{ 'var(--neg)' if over_cap else 'var(--accent)' }}"></div></div>{{ pct }}%</div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Cost per day</h2><span class="note">last 14 days, UTC</span></div>
+    <div class="tbl-wrap"><table class="chan">
+      <thead><tr><th>Day</th><th class="num">Runs</th><th class="num">Failed</th><th class="num">Cost</th></tr></thead>
+      <tbody>{% for d in days|reverse %}<tr><td class="where">{{ d.day }}</td><td class="num">{{ d.runs }}</td><td class="num {{ 'neg' if d.failed else 'mut' }}">{{ d.failed }}</td><td class="num">${{ "%.2f"|format(d.cost) }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+</div>
+<section class="panel">
+  <div class="panel-head"><h2>Recent runs</h2></div>
+  {% if runs %}
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Started</th><th>Agent</th><th>Model</th><th>Status</th><th class="num">Tokens in / out</th><th class="num">Cost</th><th>Error</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td>{{ r.started_at|utc }}</td>
+        <td>{{ r.agent }}</td>
+        <td class="where" style="font-family:var(--mono)">{{ r.model }}</td>
+        <td><span class="pill {{ 'ok' if r.status == 'ok' else 'unanswered' if r.status == 'skipped_budget' else 'frustrated' }}">{{ r.status }}</span></td>
+        <td class="num">{{ r.input_tokens }} / {{ r.output_tokens }}</td>
+        <td class="num">${{ "%.4f"|format(r.cost_usd) }}</td>
+        <td class="neg">{{ r.error or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="empty">No agent runs yet{% if status %} with this status{% endif %}.</p>{% endif %}
+</section>
+{% endblock %}

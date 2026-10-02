@@ -231,3 +231,31 @@ def digest_job_state(conn, since: datetime, now: datetime) -> tuple[str, str | N
     if now - since > timedelta(minutes=JOB_TIMEOUT_MINUTES):
         return "failed", f"no digest after {JOB_TIMEOUT_MINUTES} minutes"
     return "running", None
+
+
+RUN_STATUSES = ("ok", "failed", "skipped_budget")
+
+
+def daily_costs(conn, now: datetime, days: int = 14) -> list[dict]:
+    end = (now.astimezone(timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = end - timedelta(days=days)
+    rows = conn.execute(
+        "SELECT substr(started_at, 1, 10) AS day, COUNT(*) AS runs, COALESCE(SUM(cost_usd), 0) AS cost,"
+        " SUM(status != 'ok') AS failed FROM agent_runs WHERE started_at >= ? AND started_at < ? GROUP BY day",
+        (to_iso(start), to_iso(end)),
+    ).fetchall()
+    by_day = {r["day"]: r for r in rows}
+    out = []
+    for key in day_keys(start, end):
+        r = by_day.get(key)
+        out.append({"day": key, "runs": r["runs"] if r else 0, "cost": float(r["cost"]) if r else 0.0,
+                    "failed": r["failed"] if r else 0})
+    return out
+
+
+def recent_runs(conn, *, status: str | None = None, limit: int = 100):
+    if status in RUN_STATUSES:
+        return conn.execute(
+            "SELECT * FROM agent_runs WHERE status = ? ORDER BY started_at DESC, id DESC LIMIT ?", (status, limit)
+        ).fetchall()
+    return conn.execute("SELECT * FROM agent_runs ORDER BY started_at DESC, id DESC LIMIT ?", (limit,)).fetchall()
