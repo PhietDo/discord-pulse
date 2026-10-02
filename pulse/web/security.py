@@ -1,11 +1,14 @@
 """Cross-site and DNS-rebinding protection, and limits on agent jobs started from the dashboard."""
 from __future__ import annotations
 
+import sqlite3
 import threading
+from http import HTTPStatus
 from typing import Callable
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
@@ -29,6 +32,32 @@ async def refuse_cross_site(request: Request, call_next) -> Response:
     if request.method in UNSAFE_METHODS and _cross_site(request):
         return PlainTextResponse("Cross-site request refused", status_code=403)
     return await call_next(request)
+
+
+LOCKED_TEXT = "The pipeline is writing right now; try again in a few seconds."
+
+
+def error_response(request: Request, status_code: int, detail: str, headers: dict | None = None) -> Response:
+    """A small HTML error page, or just a fragment for htmx requests (swapped in place)."""
+    template = "_error.html" if request.headers.get("HX-Request") else "error.html"
+    try:
+        title = HTTPStatus(status_code).phrase
+    except ValueError:
+        title = "Error"
+    return request.app.state.templates.TemplateResponse(
+        request, template, {"title": title, "detail": detail}, status_code=status_code, headers=headers
+    )
+
+
+async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
+    return error_response(request, exc.status_code, str(exc.detail), getattr(exc, "headers", None))
+
+
+async def database_busy(request: Request, exc: sqlite3.OperationalError) -> Response:
+    """A write that lost the race with the pipeline's write lock gets a 503, not a 500."""
+    if request.method in UNSAFE_METHODS and "locked" in str(exc):
+        return error_response(request, 503, LOCKED_TEXT)
+    raise exc
 
 
 class JobSlots:

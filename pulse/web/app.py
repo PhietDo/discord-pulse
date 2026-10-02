@@ -1,15 +1,17 @@
 """FastAPI app factory for the dashboard."""
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pulse.web import fmt
-from pulse.web.security import JobSlots, refuse_cross_site
+from pulse.web.security import JobSlots, database_busy, http_error, refuse_cross_site
 from pulse.web.settings import WebSettings
 from pulse.web.views import bugs, investigations, launch, messages, overview, pain, queue, reports, runs
 
@@ -22,6 +24,8 @@ def create_app(settings: WebSettings) -> FastAPI:
     app.state.settings = settings
     app.state.job_slots = JobSlots()
     app.middleware("http")(refuse_cross_site)
+    app.add_exception_handler(StarletteHTTPException, http_error)
+    app.add_exception_handler(sqlite3.OperationalError, database_busy)
     if settings.allowed_hosts is not None:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
