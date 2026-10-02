@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import ipaddress
+import os
 import sys
 from dataclasses import replace
 from datetime import date, datetime, timezone
@@ -33,6 +35,7 @@ from pulse.pipeline import (
     run_pipeline,
 )
 from pulse.store import sync_launches
+from pulse.sources.bot_source import BotSource
 from pulse.sources.file_source import FileSource
 from pulse.web.app import create_app
 from pulse.web.settings import WebSettings
@@ -42,7 +45,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pulse")
     parser.add_argument("--config", default="pulse.toml")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("ingest", help="import export files from the imports folder")
+    ingest_p = sub.add_parser("ingest", help="import messages from export files, or backfill through the bot")
+    ingest_p.add_argument("--source", choices=("file", "bot"), default="file")
     triage = sub.add_parser("triage", help="label untriaged messages")
     triage.add_argument("--since", type=date.fromisoformat, help="only messages on or after YYYY-MM-DD")
     triage.add_argument("--force", action="store_true", help="re-triage messages in range")
@@ -77,6 +81,22 @@ def _is_loopback(host: str) -> bool:
         return ipaddress.ip_address(host.strip("[]")).is_loopback
     except ValueError:
         return False
+
+
+def _discord_installed() -> bool:
+    return importlib.util.find_spec("discord") is not None
+
+
+def _bot_token() -> str | None:
+    """The bot token, or None after printing why the bot cannot run."""
+    if not _discord_installed():
+        print("bot: install the bot extra first: .venv/bin/pip install -e '.[bot]'", file=sys.stderr)
+        return None
+    token = os.environ.get("DISCORD_BOT_TOKEN")
+    if not token:
+        print("bot: DISCORD_BOT_TOKEN must be set (see docs/bot-pitch.md for setup)", file=sys.stderr)
+        return None
+    return token
 
 
 def _serve(settings: WebSettings, host: str, port: int) -> int:
@@ -128,7 +148,14 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(timezone.utc)
 
     if args.command == "ingest":
-        stats, errors = ingest(conn, config, FileSource(config.imports_dir))
+        if args.source == "bot":
+            token = _bot_token()
+            if token is None:
+                return 2
+            source = BotSource(conn, config, token=token)
+        else:
+            source = FileSource(config.imports_dir)
+        stats, errors = ingest(conn, config, source)
         print(format_ingest(stats, errors))
     elif args.command == "triage":
         since = datetime.combine(args.since, datetime.min.time(), timezone.utc) if args.since else None

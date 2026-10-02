@@ -84,6 +84,7 @@ class Config:
     db_path: Path
     imports_dir: Path
     classifier: ClassifierConfig | None = None
+    bot_backfill_days: int = 30
 
 
 def _price(name: str, raw: Any) -> Price:
@@ -175,6 +176,11 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, requi
     mod_queue = raw.get("mod_queue", {})
     paths = raw.get("paths", {})
     base = path.parent
+
+    backfill_days = raw.get("bot", {}).get("backfill_days", 30)
+    if isinstance(backfill_days, bool) or not isinstance(backfill_days, int) or backfill_days < 1:
+        raise ConfigError(f"[bot] backfill_days must be a whole number of days, at least 1, got {backfill_days!r}")
+
     return Config(
         guild_id=guild_id,
         channel_ids=tuple(str(c) for c in server.get("channel_ids", [])),
@@ -188,6 +194,7 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, requi
         db_path=base / paths.get("db", "pulse.db"),
         imports_dir=base / paths.get("imports", "imports"),
         classifier=_classifier(raw.get("classifier"), env, require_keys),
+        bot_backfill_days=backfill_days,
     )
 
 

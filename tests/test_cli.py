@@ -190,3 +190,27 @@ def test_web_demo_clock_starts_at_seed_time(tmp_path, monkeypatch):
     settings = served["app"].state.settings
     assert abs(settings.clock() - seeded_at) < timedelta(minutes=1)
     assert settings.config.launches[0].date == (seeded_at - timedelta(days=LAUNCH_DAYS_AGO)).date().isoformat()
+
+
+def test_ingest_from_bot_needs_the_extra_and_a_token(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    (tmp_path / "pulse.toml").write_text(CONFIG)
+    cfg = str(tmp_path / "pulse.toml")
+    monkeypatch.setattr("pulse.run._discord_installed", lambda: False)
+    assert main(["--config", cfg, "ingest", "--source", "bot"]) == 2
+    assert "pip install -e '.[bot]'" in capsys.readouterr().err
+    monkeypatch.setattr("pulse.run._discord_installed", lambda: True)
+    assert main(["--config", cfg, "ingest", "--source", "bot"]) == 2
+    assert "DISCORD_BOT_TOKEN must be set" in capsys.readouterr().err
+
+
+def test_bot_backfill_days_config(tmp_path, monkeypatch):
+    from pulse.config import ConfigError, load_config
+
+    path = tmp_path / "pulse.toml"
+    path.write_text(CONFIG + "\n[bot]\nbackfill_days = 7\n")
+    assert load_config(path, {"ANTHROPIC_API_KEY": "x"}).bot_backfill_days == 7
+    path.write_text(CONFIG + "\n[bot]\nbackfill_days = 0\n")
+    with pytest.raises(ConfigError, match="backfill_days"):
+        load_config(path, {"ANTHROPIC_API_KEY": "x"})

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+bot = ["discord.py>=2.4"]
 
 [build-system]
 requires = ["setuptools>=68"]
