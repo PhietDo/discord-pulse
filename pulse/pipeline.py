@@ -11,6 +11,7 @@ from pulse.agents.investigate import InvestigationResult
 from pulse.agents.llm import LLMClient
 from pulse.agents.theme import ThemeStats, run_themes
 from pulse.agents.triage import TriageStats, run_triage
+from pulse.alerts import AlertStats, send_alerts
 from pulse.citations import render_text
 from pulse.config import Config
 from pulse.links import jump_link
@@ -66,6 +67,7 @@ class PipelineReport:
     triage: TriageStats
     modqueue: ModQueueStats
     themes: ThemeStats | None = None
+    alerts: AlertStats | None = None
 
 
 def run_pipeline(
@@ -84,7 +86,8 @@ def run_pipeline(
     # The mod queue goes before themes so a theme failure never blocks who-needs-a-reply.
     queue_stats = refresh_mod_queue(conn, config, now)
     theme_stats = run_themes(conn, llm, now)
-    return PipelineReport(ingest_stats, errors, triage_stats, queue_stats, themes=theme_stats)
+    alert_stats = send_alerts(conn, config, now) if config.alerts.enabled else None
+    return PipelineReport(ingest_stats, errors, triage_stats, queue_stats, themes=theme_stats, alerts=alert_stats)
 
 
 def format_ingest(stats: UpsertStats, errors: list[str]) -> str:
@@ -126,6 +129,15 @@ def format_themes(stats: ThemeStats) -> str:
     return "\n".join(lines)
 
 
+def format_alerts(stats: AlertStats) -> str:
+    line = f"alerts: {stats.found} found, {stats.sent} sent"
+    if stats.failed:
+        line += f", {stats.failed} failed (will retry)"
+    if stats.skipped:
+        line += f" (not sent: {stats.skipped})"
+    return line
+
+
 def _removed_note(removed: list[str]) -> str:
     return f"\n\n(removed {len(removed)} citation(s) to messages the agent was not shown)" if removed else ""
 
@@ -148,6 +160,8 @@ def format_report(report: PipelineReport) -> str:
     ]
     if report.themes is not None:
         lines.append(format_themes(report.themes))
+    if report.alerts is not None:
+        lines.append(format_alerts(report.alerts))
     return "\n".join(lines)
 
 

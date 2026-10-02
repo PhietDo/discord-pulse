@@ -79,6 +79,14 @@ class IntegrationsConfig:
 
 
 @dataclass(frozen=True)
+class AlertsConfig:
+    enabled: bool = False
+    spike_min_volume: int = 5
+    spike_trend: float = 1.0
+    frustrated_hours: float = 12.0
+
+
+@dataclass(frozen=True)
 class Config:
     guild_id: str
     channel_ids: tuple[str, ...]
@@ -94,6 +102,7 @@ class Config:
     classifier: ClassifierConfig | None = None
     bot_backfill_days: int = 30
     integrations: IntegrationsConfig = IntegrationsConfig()
+    alerts: AlertsConfig = AlertsConfig()
 
 
 def _price(name: str, raw: Any) -> Price:
@@ -175,6 +184,25 @@ def _integrations(raw: Any) -> IntegrationsConfig:
     )
 
 
+def _alerts(raw: Any) -> AlertsConfig:
+    raw = raw or {}
+    enabled = raw.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f"[alerts] enabled must be a boolean, got {enabled!r}")
+    try:
+        cfg = AlertsConfig(
+            enabled=enabled,
+            spike_min_volume=int(raw.get("spike_min_volume", 5)),
+            spike_trend=float(raw.get("spike_trend", 1.0)),
+            frustrated_hours=float(raw.get("frustrated_hours", 12.0)),
+        )
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"[alerts] spike_min_volume, spike_trend and frustrated_hours must be numbers: {e}") from e
+    if cfg.spike_min_volume < 1 or cfg.spike_trend < 0 or cfg.frustrated_hours <= 0:
+        raise ConfigError("[alerts] spike_min_volume must be at least 1 and the other values positive")
+    return cfg
+
+
 def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, require_keys: bool = True) -> Config:
     path = Path(path)
     env = os.environ if env is None else env
@@ -229,6 +257,7 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, requi
         classifier=_classifier(raw.get("classifier"), env, require_keys),
         bot_backfill_days=backfill_days,
         integrations=_integrations(raw.get("integrations")),
+        alerts=_alerts(raw.get("alerts")),
     )
 
 

@@ -111,6 +111,15 @@ Add `[integrations.github]` (`repo`, optional `labels`) or `[integrations.linear
 
 The issue holds the pain point's summary, counts, status and up to 8 message excerpts with Discord links. It names no authors, and `@` mentions are defused. Each pain point is sent at most once per tracker; asking again returns the existing link. Check `--dry-run` before posting to a public repo.
 
+## Slack alerts
+
+Create a Slack incoming webhook, set `SLACK_WEBHOOK_URL`, and set `[alerts] enabled = true`. Each `pipeline` run then posts:
+
+- a pain point that is spiking (at least `spike_min_volume` messages in 24 hours and `spike_trend` times more than the 24 hours before), at most once a day per pain point;
+- a frustrated message that has gone `frustrated_hours` without a staff reply, once per mod queue item.
+
+At most 10 alerts go out per run; a failed post is retried next run. `python -m pulse.run alerts --dry-run` shows what would be posted.
+
 ## Themes, digests, investigations
 
 ```bash

@@ -71,3 +71,11 @@ backfill_days = 30
 # labels = ["community"]
 # [integrations.linear]
 # team_id = "your-team-uuid"
+
+# Slack alerts, posted at the end of each pipeline run. The webhook URL comes from
+# SLACK_WEBHOOK_URL, never from this file.
+[alerts]
+enabled = false
+spike_min_volume = 5      # messages in the last 24 hours before a pain point can spike
+spike_trend = 1.0         # 1.0 = doubled compared with the 24 hours before
+frustrated_hours = 12     # frustrated message with no staff reply for this long

@@ -134,6 +134,13 @@ CREATE TABLE IF NOT EXISTS digests (
     removed_citations TEXT NOT NULL DEFAULT '[]'
 );
 
+CREATE TABLE IF NOT EXISTS alerts_sent (
+    kind TEXT NOT NULL CHECK (kind IN ('spike', 'frustrated')),
+    key TEXT NOT NULL,
+    sent_at TEXT NOT NULL,
+    PRIMARY KEY (kind, key)
+);
+
 CREATE TABLE IF NOT EXISTS investigations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     question TEXT NOT NULL,

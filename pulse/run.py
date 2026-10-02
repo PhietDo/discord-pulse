@@ -19,6 +19,7 @@ from pulse.agents.digest import run_digest
 from pulse.agents.investigate import run_investigation
 from pulse.agents.triage import run_triage
 from pulse.agents.theme import run_themes
+from pulse.alerts import find_alerts, send_alerts
 from pulse.config import ConfigError, load_config
 from pulse.db import connect
 from pulse.demo import SERVER_NAME, demo_config, demo_seeded_at, seed_demo
@@ -26,6 +27,7 @@ from pulse.issues import TRACKER_LABELS, TrackerError, issue_draft, send_issue
 from pulse.modqueue import list_open, refresh_mod_queue
 from pulse.pipeline import (
     build_llm,
+    format_alerts,
     format_digest,
     format_ingest,
     format_investigation,
@@ -76,6 +78,8 @@ def _parser() -> argparse.ArgumentParser:
     issue.add_argument("theme", type=int, help="theme id (shown in the dashboard's Pain points link)")
     issue.add_argument("--to", choices=("github", "linear"), required=True)
     issue.add_argument("--dry-run", action="store_true", help="print the issue instead of sending it")
+    alerts = sub.add_parser("alerts", help="post Slack alerts for spiking pain points and frustrated users")
+    alerts.add_argument("--dry-run", action="store_true", help="print the alerts instead of posting them")
     invite = sub.add_parser("bot-invite", help="print the invite link that asks only for read access")
     invite.add_argument("--client-id", required=True, help="the Application ID from the Discord Developer Portal")
     sched = sub.add_parser("schedule", help="install launchd jobs: pipeline every 30 min, weekly digest, optional bot")
@@ -266,6 +270,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         verb = "created" if result["created"] else "already sent:"
         print(f"{verb} {TRACKER_LABELS[args.to]} issue {result['identifier']}: {result['url']}")
+    elif args.command == "alerts":
+        if args.dry_run:
+            found = find_alerts(conn, config, now)
+            print("\n\n".join(a.text for a in found) if found else "no alerts")
+        else:
+            print(format_alerts(send_alerts(conn, config, now)))
     elif args.command == "web":
         conn.close()
         settings = WebSettings(
