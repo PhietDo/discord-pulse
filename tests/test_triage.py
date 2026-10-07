@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 from pulse.agents.base import BackendResult
 from pulse.agents.triage import MAX_CONTENT_CHARS, PROMPT_VERSION, run_triage
@@ -67,7 +68,25 @@ def test_payload_includes_reply_parent_and_preceding_context():
     item = payload_items(backend.calls[0])["m3"]
     assert item["reply_to"] == {"author": "alice", "content": "first"}
     assert [c["content"] for c in item["context"]] == ["first", "second"]
-    assert payload_items(backend.calls[0])["m2"]["is_team"] is True
+    assert "m2" not in payload_items(backend.calls[0])  # staff: context only, never labeled by the model
+
+
+def test_staff_messages_get_a_rule_label_without_a_model_call():
+    conn, backend, llm = setup([msg("s1", "fix ships today", author_id="t1")])
+    stats = run_triage(conn, llm)
+    assert backend.calls == []
+    assert (stats.triaged, stats.staff_rule) == (1, 1)
+    r = triage_rows(conn)["s1"]
+    assert (r["labeler"], r["prompt_version"], r["sentiment"], r["kind"], r["needs_reply"]) == (
+        "rule", "staff-rule", 0, "other", 0)
+
+
+def test_channels_limits_triage_to_those_channels_and_their_threads():
+    thread = replace(msg("t1", "in a forum thread", channel_id="555"), parent_channel_id="200")
+    conn, backend, llm = setup([msg("a", channel_id="200"), thread, msg("b", channel_id="300")])
+    stats = run_triage(conn, llm, channels=("200",))
+    assert stats.triaged == 2
+    assert set(triage_rows(conn)) == {"a", "t1"}
 
 
 def test_long_content_is_truncated_in_payload():

@@ -1,4 +1,4 @@
-"""Template context shared by every page: filters, nav counts, channels, budget banner."""
+"""Template context shared by every page: filters, nav counts, channels, budget and coverage banners."""
 from __future__ import annotations
 
 import sqlite3
@@ -71,4 +71,5 @@ def base_context(request, conn: sqlite3.Connection, f: Filters, active: str) -> 
         "spent": spent,
         "cap": cap,
         "over_cap": cap > 0 and spent >= cap,
+        "coverage": stats.coverage(conn, f.start, f.end, f.channels),
     }

@@ -336,3 +336,15 @@ def test_forum_channel_shows_its_parent_name_and_staff_only_channels_are_hidden(
                           channel_name="announcements")
     upsert_messages(conn, forum + [staff_only], frozenset({"t1"}))
     assert stats.top_channels(conn) == [{"id": "600", "name": "community-help", "messages": 2}]
+
+
+def test_coverage_counts_untriaged_community_messages_in_scope():
+    conn = connect(":memory:")
+    upsert_messages(conn, [
+        msg("a", channel_id="100"), msg("b", channel_id="100", minutes=1),
+        msg("s", channel_id="100", minutes=2, author_id="t1"), msg("c", channel_id="200", minutes=3),
+    ], frozenset({"t1"}))
+    set_triage(conn, "a")
+    end = T0 + timedelta(days=1)
+    assert stats.coverage(conn, T0, end) == {"total": 3, "triaged": 1}
+    assert stats.coverage(conn, T0, end, ("100",)) == {"total": 2, "triaged": 1}

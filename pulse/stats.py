@@ -50,6 +50,20 @@ def theme_clause(conn: sqlite3.Connection, theme_id: int | None) -> tuple[str, l
     return f" AND m.id IN (SELECT message_id FROM message_themes WHERE theme_id IN ({marks}))", ids
 
 
+def coverage(conn: sqlite3.Connection, start: datetime, end: datetime,
+             channels: tuple[str, ...] | None = None) -> dict:
+    """Community messages in [start, end) and how many of them are triaged. Triage runs
+    newest first under the daily cap, so older ranges can be partly analyzed."""
+    scope, params = scope_clause(channels)
+    row = conn.execute(
+        "SELECT COUNT(*) AS total, COUNT(t.message_id) AS triaged FROM messages m"
+        " LEFT JOIN triage t ON t.message_id = m.id"
+        f" WHERE {_COMMUNITY} AND trim(m.content) != '' AND m.created_at >= ? AND m.created_at < ?{scope}",
+        (to_iso(start), to_iso(end), *params),
+    ).fetchone()
+    return {"total": row["total"], "triaged": row["triaged"]}
+
+
 def top_channels(conn: sqlite3.Connection) -> list[dict]:
     """Top-level channels with community messages, threads counted under their parent,
     busiest first. A forum channel that only has threads is named from its threads'

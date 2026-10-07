@@ -56,6 +56,8 @@ def _parser() -> argparse.ArgumentParser:
     triage = sub.add_parser("triage", help="label untriaged messages")
     triage.add_argument("--since", type=date.fromisoformat, help="only messages on or after YYYY-MM-DD")
     triage.add_argument("--force", action="store_true", help="re-triage messages in range")
+    triage.add_argument("--channel", action="append", dest="channels", metavar="ID",
+                        help="only this channel and its threads (repeatable)")
     sub.add_parser("modqueue", help="refresh the mod queue")
     queue = sub.add_parser("queue", help="list open mod queue items, highest priority first")
     queue.add_argument("--limit", type=int, default=20)
@@ -238,7 +240,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     elif args.command == "triage":
         since = datetime.combine(args.since, datetime.min.time(), timezone.utc) if args.since else None
-        print(format_triage(run_triage(conn, build_llm(conn, config), since=since, force=args.force)))
+        print(format_triage(run_triage(
+            conn, build_llm(conn, config), since=since, force=args.force,
+            channels=tuple(args.channels) if args.channels else None,
+        )))
     elif args.command == "modqueue":
         print(format_modqueue(refresh_mod_queue(conn, config, now)))
     elif args.command == "queue":

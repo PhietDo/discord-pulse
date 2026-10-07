@@ -80,12 +80,14 @@ def test_escalate_kinds_and_low_confidence_go_to_llm():
     assert llm_ids(backend) == {"p", "h"}
 
 
-def test_staff_messages_are_overridden_and_never_escalated():
+def test_staff_messages_skip_the_classifier_and_the_llm():
     conn, backend, fc, llm = setup([msg("s1", "known issue, fix ships today", author_id="t1")])
-    run_triage(conn, llm)
+    stats = run_triage(conn, llm)
     r = rows(conn)["s1"]
-    assert (r["labeler"], r["sentiment"], r["kind"], r["needs_reply"], r["needs_reply_p"]) == ("jev", 0, "other", 0, 0.0)
-    assert backend.calls == []
+    assert (r["labeler"], r["sentiment"], r["kind"], r["needs_reply"], r["needs_reply_p"]) == ("rule", 0, "other", 0, 0.0)
+    assert r["prompt_version"] == "staff-rule"
+    assert backend.calls == [] and fc.calls == []
+    assert stats.staff_rule == 1
 
 
 def test_classifier_failure_escalates_to_llm():
@@ -96,17 +98,6 @@ def test_classifier_failure_escalates_to_llm():
     assert stats.classifier_failed == 1
     r = rows(conn)["m1"]
     assert (r["labeler"], r["needs_reply_p"]) == ("llm", None)
-
-
-def test_staff_message_is_neutral_even_when_classifier_fails():
-    fc = FakeClassifier(handler=lambda state: ProviderError("400"))
-    conn, backend, fc, llm = setup([msg("s1", "known issue, fix ships today", author_id="t1")], classifier=fc)
-    stats = run_triage(conn, llm)
-    assert backend.calls == []
-    r = rows(conn)["s1"]
-    assert (r["labeler"], r["sentiment"], r["kind"], r["needs_reply"], r["needs_reply_p"]) == ("rule", 0, "other", 0, 0.0)
-    assert r["prompt_version"] == "staff-rule"
-    assert stats.classifier_failed == 1
 
 
 def test_budget_hit_in_classifier_stage_stops_triage():

@@ -2,8 +2,9 @@
 
 With the classifier enabled, Stage A asks Jev about every message and stores
 confident, low-stakes labels directly; Stage B sends the rest to the batched
-LLM path. Worker threads only call models; the calling thread writes each
-result as it arrives, under the LLM client's DB lock.
+LLM path. Staff messages never reach a model: they get a neutral rule label.
+Worker threads only call models; the calling thread writes each result as it
+arrives, under the LLM client's DB lock.
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import json
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -62,6 +63,7 @@ class TriageStats:
     classifier_failed: int = 0
     kept_llm: int = 0
     left_untriaged: int = 0
+    staff_rule: int = 0
 
 
 def load_prompt() -> str:
@@ -69,7 +71,10 @@ def load_prompt() -> str:
 
 
 def select_untriaged(
-    conn: sqlite3.Connection, since: datetime | None = None, force: bool = False
+    conn: sqlite3.Connection,
+    since: datetime | None = None,
+    force: bool = False,
+    channels: tuple[str, ...] | None = None,
 ) -> list[sqlite3.Row]:
     sql = (
         "SELECT m.* FROM messages m LEFT JOIN triage t ON t.message_id = m.id"
@@ -81,6 +86,10 @@ def select_untriaged(
     if since is not None:
         sql += " AND m.created_at >= ?"
         params.append(to_iso(since))
+    if channels:
+        marks = ",".join("?" * len(channels))
+        sql += f" AND (m.channel_id IN ({marks}) OR m.parent_channel_id IN ({marks}))"
+        params += [*channels, *channels]
     sql += " ORDER BY m.created_at DESC, m.id DESC"
     return conn.execute(sql, params).fetchall()
 
@@ -155,8 +164,16 @@ def needs_escalation(result: ClassifierResult, cfg: ClassifierConfig) -> bool:
     )
 
 
-def _staff_override(result: ClassifierResult) -> ClassifierResult:
-    return replace(result, sentiment=0, kind="other", needs_reply_p=0.0)
+def _label_staff(conn: sqlite3.Connection, llm: LLMClient, rows: list[sqlite3.Row]) -> int:
+    """Staff posts (announcements, answers, fixes) are information, not feedback:
+    store a neutral rule label instead of paying a model for one."""
+    now = to_iso(datetime.now(timezone.utc))
+    with llm.db_lock, conn:
+        conn.executemany(_INSERT, [
+            (r["id"], 0, 1.0, "other", "[]", 0, "staff-rule", None, now, 0.0, None, "rule")
+            for r in rows
+        ])
+    return len(rows)
 
 
 def _classify_stage(
@@ -209,22 +226,11 @@ def _classify_stage(
                 continue
             if error == "failed":
                 stats.classifier_failed += 1
-                if row["is_team"]:
-                    if mid in keep:
-                        continue
-                    now = to_iso(datetime.now(timezone.utc))
-                    with llm.db_lock, conn:
-                        conn.execute(_INSERT, (
-                            mid, 0, 1.0, "other", "[]", 0, "staff-rule",
-                            None, now, 0.0, None, "rule",
-                        ))
-                    stats.triaged += 1
-                    continue
                 escalate.append(row)
                 continue
-            result = _staff_override(resp.result) if row["is_team"] else resp.result
+            result = resp.result
             p_by_id[mid] = result.needs_reply_p
-            if not row["is_team"] and needs_escalation(result, cfg):
+            if needs_escalation(result, cfg):
                 escalate.append(row)
                 rule_escalated += 1
                 continue
@@ -254,9 +260,15 @@ def run_triage(
     classify_concurrency: int = 8,
     since: datetime | None = None,
     force: bool = False,
+    channels: tuple[str, ...] | None = None,
 ) -> TriageStats:
-    rows = select_untriaged(conn, since, force=force)
+    rows = select_untriaged(conn, since, force=force, channels=channels)
     stats = TriageStats()
+    staff = [r for r in rows if r["is_team"]]
+    if staff:
+        stats.staff_rule = _label_staff(conn, llm, staff)
+        stats.triaged += stats.staff_rule
+        rows = [r for r in rows if not r["is_team"]]
     # Set once any call hits the budget cap, so later calls skip entirely
     # instead of each recording their own skipped_budget row.
     stop = threading.Event()
@@ -264,7 +276,7 @@ def run_triage(
     cfg = llm.config.classifier
     p_by_id: dict[str, float] = {}
     if rows and cfg is not None and cfg.enabled and llm.has_classifier:
-        total_selected = len(rows)
+        total_selected = len(rows) + stats.staff_rule
         rows, p_by_id = _classify_stage(conn, llm, rows, cfg, classify_concurrency, stats, stop)
         if stop.is_set():
             # Unfinished messages stay untriaged and are retried on the next run.

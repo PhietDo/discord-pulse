@@ -1,10 +1,12 @@
+from dataclasses import replace
 from datetime import timedelta
 
 from pulse.citations import render_html
 from pulse.db import connect
+from pulse.store import upsert_messages
 from pulse.web.cards import cards_by_ids
 from pulse.web.filters import parse_filters
-from tests.fakes import make_config
+from tests.fakes import make_config, msg
 from tests.web_fakes import NOW, make_client, seed
 
 
@@ -80,6 +82,18 @@ def test_layout_renders_on_empty_db_with_bad_params(tmp_path):
 def test_layout_shows_budget_banner_when_cap_reached(tmp_path):
     r = make_client(tmp_path, config=make_config(daily_usd_cap=0.01)).get("/")
     assert "reached the $0.01 daily cap" in r.text
+
+
+def test_layout_shows_coverage_banner_only_when_messages_are_untriaged(tmp_path):
+    client = make_client(tmp_path)
+    assert "community messages in this view" not in client.get("/").text
+    conn = connect(tmp_path / "pulse.db")
+    upsert_messages(conn, [replace(msg("late", "not triaged yet", channel_id="200"),
+                                   created_at=NOW - timedelta(hours=1))], frozenset({"t1"}))
+    conn.close()
+    total = client.get("/").text
+    assert "Analyzed" in total and "community messages in this view" in total
+    assert "community messages in this view" not in client.get("/?channel=100").text
 
 
 def test_nav_counts_follow_channel_filter(tmp_path):

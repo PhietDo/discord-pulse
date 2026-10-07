@@ -98,6 +98,8 @@ def format_ingest(stats: UpsertStats, errors: list[str]) -> str:
 
 def format_triage(stats: TriageStats) -> str:
     line = f"triage: triaged {stats.triaged}, failed batches {stats.failed_batches}"
+    if stats.staff_rule:
+        line += f"\n  staff messages labeled without a model: {stats.staff_rule}"
     if stats.jev_labeled or stats.escalated or stats.classifier_failed or stats.kept_llm:
         line += (
             f"\n  jev: labeled {stats.jev_labeled}, escalated to LLM {stats.escalated},"

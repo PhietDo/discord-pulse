@@ -61,9 +61,9 @@ def run(tmp_path, specs, *, backend=None, classifier=None, max_usd=1.0, **config
 def test_llm_eval_scores_and_costs_without_touching_the_real_db(tmp_path):
     _, [r], backend, _ = run(tmp_path, ["anthropic:m-triage"])
     s = r.scores
-    assert s.sentiment_exact == 0.5 and s.sentiment_within_1 == 1.0
+    assert s.sentiment_exact == 0.75 and s.sentiment_within_1 == 1.0  # staff g4 gets the neutral rule label
     assert s.needs_reply_agreement == 1.0 and s.needs_reply_recall == 1.0 and s.missing == 0
-    assert s.kind_macro_f1 == pytest.approx((1 + 0 + 2 / 3) / 3)
+    assert s.kind_macro_f1 == 1.0
     assert r.cost_usd == pytest.approx(0.0002)
     assert [c["model"] for c in backend.calls] == ["m-triage"]
     assert not (tmp_path / "pulse.db").exists()
@@ -101,7 +101,7 @@ def test_hybrid_runs_two_stage_triage(tmp_path):
     config = make_config(classifier=classifier_config())
     [r] = run_eval(gold, config, ["hybrid"], backends_for=lambda c: {"anthropic": backend},
                    classifier_for=lambda: classifier, max_usd=1.0, now=lambda: FIXED_NOW)
-    assert len(classifier.calls) == 4 and len(backend.calls) == 1  # the three non-staff messages escalate in one batch (negative or praise)
+    assert len(classifier.calls) == 3 and len(backend.calls) == 1  # staff skips both stages; the other three escalate in one batch
     assert r.scores.missing == 0
 
 
@@ -118,7 +118,7 @@ def test_bad_specs_raise_config_error(tmp_path):
 
 def test_budget_cap_leaves_messages_missing(tmp_path):
     _, [r], _, _ = run(tmp_path, ["anthropic:m-triage"], max_usd=0.0)
-    assert r.scores.missing == 4 and r.cost_usd == 0.0
+    assert r.scores.missing == 3 and r.cost_usd == 0.0  # the staff message is labeled without a model
     assert any("skipped_budget" in n for n in r.notes)
 
 

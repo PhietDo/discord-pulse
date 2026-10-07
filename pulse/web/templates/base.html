@@ -37,6 +37,7 @@
   </aside>
   <main>
     {% if over_cap %}<p class="banner" role="status">Today's spend ${{ "%.2f"|format(spent) }} reached the ${{ "%.2f"|format(cap) }} daily cap. Agents stop until midnight UTC; the dashboard still works.</p>{% endif %}
+    {% if coverage.triaged < coverage.total %}<p class="banner" role="status">Analyzed {{ coverage.triaged }} of {{ coverage.total }} community messages in this view. Triage works newest first under the daily cap; the rest are picked up on later runs.</p>{% endif %}
     {% block main %}{% endblock %}
   </main>
 </div>
