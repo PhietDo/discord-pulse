@@ -13,7 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pulse.web import fmt
 from pulse.web.security import JobSlots, database_busy, http_error, refuse_cross_site
 from pulse.web.settings import WebSettings
-from pulse.web.views import bugs, investigations, launch, messages, overview, pain, queue, reports, runs
+from pulse.web.views import bugs, community, investigations, launch, messages, overview, pain, queue, reports, runs
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -35,6 +35,6 @@ def create_app(settings: WebSettings) -> FastAPI:
     )
     app.state.templates = templates
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    for module in (overview, pain, bugs, queue, messages, reports, launch, investigations, runs):
+    for module in (overview, pain, bugs, queue, community, messages, reports, launch, investigations, runs):
         app.include_router(module.router)
     return app

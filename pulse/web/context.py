@@ -9,7 +9,7 @@ from pulse.models import to_iso
 from pulse.web.filters import Filters
 
 PATHS = {
-    "overview": "/", "pain": "/pain", "bugs": "/bugs", "queue": "/queue",
+    "overview": "/", "pain": "/pain", "bugs": "/bugs", "queue": "/queue", "community": "/community",
     "messages": "/messages", "launch": "/launch", "reports": "/reports", "runs": "/runs",
 }
 
@@ -51,6 +51,7 @@ def base_context(request, conn: sqlite3.Connection, f: Filters, active: str) -> 
         ("pain", "Pain points", len(stats.theme_scores(conn, f.now, limit=1000, channels=f.channels)), False),
         ("bugs", "Bugs", bug_count(conn, f.start, f.end, f.channels), False),
         ("queue", "Mod queue", open_items, open_items > 0),
+        ("community", "Community", None, False),
         ("messages", "Messages", None, False),
         ("launch", "Launch", None, False),
         ("reports", "Reports", None, False),

@@ -200,3 +200,8 @@ textarea{width:100%;min-height:64px;resize:vertical}
 .spin{color:var(--muted)}
 .excerpt{max-height:240px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
 a.pname{display:block}
+.heat{width:100%;height:auto;display:block}
+.heat .hm{fill:var(--accent)}
+.heat .hm0{fill:var(--line)}
+.heat .ax{fill:var(--muted);font:10px var(--mono)}
+.react{font-variant-numeric:tabular-nums}

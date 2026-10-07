@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import message_card, range_selector %}
+{% block title %}Community{% endblock %}
+{% block main %}
+<div class="head">
+  <div><h1>Community</h1><p class="sub">When questions arrive and when staff answer, who is new, who helps others, and what people want most. Times in {{ tz }}.</p></div>
+  {{ range_selector(f, "/community") }}
+</div>
+
+<section class="panel">
+  <div class="panel-head"><h2>When questions arrive</h2><span class="note">messages needing a reply vs staff messages, by weekday and hour ({{ tz }})</span></div>
+  <div class="grid2">
+    <div><p class="label">Questions needing a reply</p>{{ heat_questions }}</div>
+    <div><p class="label">Staff messages</p>{{ heat_staff }}</div>
+  </div>
+  <h3>Coverage gaps</h3>
+  {% if gaps %}
+  <ul class="gaps">{% for g in gaps %}<li><b>{{ g.label }}</b>: {{ g.questions }} question{{ 's' if g.questions != 1 }}, {{ g.staff }} staff message{{ 's' if g.staff != 1 }}</li>{% endfor %}</ul>
+  {% else %}<p class="empty">No questions in this window.</p>{% endif %}
+</section>
+
+<div class="grid2">
+  <section class="panel">
+    <div class="panel-head"><h2>Newcomers</h2><span class="note">first message in this window</span></div>
+    {% if nc.count %}
+    <div class="strip">
+      <div class="stat"><span class="label">New members</span><span class="big">{{ nc.count }}</span></div>
+      <div class="stat"><span class="label">Got a reply within 48h</span><span class="big">{{ nc.replied }}</span><span class="delta mut">{{ (nc.replied * 100 / nc.count)|round|int }}%</span></div>
+      <div class="stat"><span class="label">Came back</span><span class="big">{{ nc.returned }}</span><span class="delta mut">posted again a day or more later</span></div>
+    </div>
+    <p class="pmeta">Per week: {% for w in nc.weekly %}{{ w.week }} <b>{{ w.count }}</b>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    <h3>First messages with no reply</h3>
+    <div class="msgs">{% for c in unreplied %}{{ message_card(c, now, f) }}{% else %}<p class="empty">Every newcomer got a reply.</p>{% endfor %}</div>
+    {% else %}<p class="empty">No newcomers in this window.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Community helpers</h2><span class="note">members answering other people's questions</span></div>
+    {% if helpers %}
+    <div class="tbl-wrap"><table class="chan">
+      <thead><tr><th>Member</th><th class="num">Answers</th><th class="num">People helped</th><th>Last answer</th></tr></thead>
+      <tbody>{% for h in helpers %}<tr>
+        <td><a href="/messages{{ f.qs(author_id=h.author_id) }}">{{ h.author_name }}</a></td>
+        <td class="num">{{ h.answers }}</td><td class="num">{{ h.helped }}</td><td>{{ h.last_at|age(now) }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No member answers in this window.</p>{% endif %}
+  </section>
+</div>
+
+<div class="grid2">
+  <section class="panel">
+    <div class="panel-head"><h2>Most wanted</h2><span class="note">feature requests by reactions</span></div>
+    <div class="msgs">{% for w in wanted %}{% call message_card(w.card, now, f) %}{% for e, n in w.emojis %}<span class="pill kind react">{{ e }} {{ n }}</span>{% endfor %}{% endcall %}{% else %}<p class="empty">No feature requests with reactions in this window.</p>{% endfor %}</div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Most reacted</h2><span class="note">any message</span></div>
+    <div class="msgs">{% for r in reacted %}{% call message_card(r.card, now, f) %}{% for e, n in r.emojis %}<span class="pill kind react">{{ e }} {{ n }}</span>{% endfor %}{% endcall %}{% else %}<p class="empty">No reactions in this window.</p>{% endfor %}</div>
+  </section>
+</div>
+{% endblock %}

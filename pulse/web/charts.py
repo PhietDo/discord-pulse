@@ -6,6 +6,8 @@ from html import escape
 
 from markupsafe import Markup
 
+from pulse.community import WEEKDAYS
+
 _W, _H, _L, _R, _T, _B = 640, 250, 44, 14, 16, 30
 
 
@@ -101,3 +103,24 @@ def sparkline(values: list[int]) -> Markup:
         f'<path class="a" d="{d} L{x(last):.1f} {h} L{x(0):.1f} {h} Z"/><path class="l" d="{d}"/>'
         f'<circle cx="{x(last):.1f}" cy="{y(vals[-1]):.1f}" r="2.4"/></svg>'
     )
+
+
+def heatmap(grid: list[list[int]], label: str) -> Markup:
+    """7 x 24 grid (Mon..Sun x hour) as SVG cells shaded relative to the busiest cell."""
+    cw, ch, left, top = 22, 18, 34, 18
+    w, h = left + 24 * cw, top + 7 * ch
+    peak = max((max(row) for row in grid), default=0)
+    parts = [f'<svg class="heat" viewBox="0 0 {w} {h}" role="img" aria-label="{escape(label)}">']
+    for hour in range(0, 24, 3):
+        parts.append(f'<text class="ax" x="{left + hour * cw + cw / 2:.0f}" y="12" text-anchor="middle">{hour:02d}</text>')
+    for d, row in enumerate(grid):
+        y = top + d * ch
+        parts.append(f'<text class="ax" x="{left - 6}" y="{y + ch - 5}" text-anchor="end">{WEEKDAYS[d]}</text>')
+        for hour, v in enumerate(row):
+            shade = f' fill-opacity="{0.15 + 0.85 * v / peak:.2f}"' if v and peak else ""
+            parts.append(
+                f'<rect class="{"hm" if v else "hm0"}" x="{left + hour * cw + 1}" y="{y + 1}" width="{cw - 2}"'
+                f' height="{ch - 2}" rx="2"{shade}><title>{WEEKDAYS[d]} {hour:02d}:00 · {v}</title></rect>'
+            )
+    parts.append("</svg>")
+    return Markup("".join(parts))
