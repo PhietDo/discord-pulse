@@ -2,6 +2,26 @@
 
 Internal DevRel tool: how a product's Discord community feels, which pain points recur, and who still needs a reply. Analysis is done by LLM subagents (Anthropic, OpenAI, or OpenRouter, chosen per agent).
 
+## Screenshots
+
+All screenshots use the built-in demo dataset (a made-up "Acme SDK" community from `python -m pulse.run seed-demo`), not real server data.
+
+| Overview | Pain points |
+|---|---|
+| ![Overview: sentiment and volume with the launch marked, rising pain points, needs attention](docs/screenshots/overview.png) | ![Pain points: ranked table with status, trend and score, plus the messages behind the selected pain point](docs/screenshots/pain-points.png) |
+
+| Bugs | Mod queue |
+|---|---|
+| ![Bugs grouped by pain point, with which ones still lack a staff reply](docs/screenshots/bugs.png) | ![Mod queue: frustrated and unanswered messages with Mark handled and Dismiss](docs/screenshots/mod-queue.png) |
+
+| Launch | Weekly digest |
+|---|---|
+| ![Launch: equal windows before and after a release](docs/screenshots/launch.png) | ![A weekly digest whose citations link to the messages it used](docs/screenshots/reports.png) |
+
+| Messages | Runs |
+|---|---|
+| ![Messages: search by text, author, pain point, type and sentiment](docs/screenshots/messages.png) | ![Runs: spend against the daily cap, cost per day and failures](docs/screenshots/runs.png) |
+
 ## Setup
 
 ```bash
