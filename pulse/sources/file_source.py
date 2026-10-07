@@ -87,6 +87,7 @@ class FileSource:
                         reply_to_id=str(reference["messageId"]) if reference.get("messageId") else None,
                         source="file",
                         parent_channel_id=parent_channel_id,
+                        parent_channel_name=(str(channel.get("category") or "") or None) if is_thread else None,
                         reactions=merge_reactions(
                             ((r.get("emoji") or {}).get("name") or (r.get("emoji") or {}).get("code"), r.get("count"))
                             for r in raw.get("reactions") or [] if isinstance(r, dict)

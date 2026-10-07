@@ -12,7 +12,7 @@ from pulse.models import Message, to_iso
 _COLUMNS = (
     "guild_id", "channel_id", "channel_name", "thread_id", "author_id", "author_name",
     "author_avatar_url", "is_team", "is_bot", "content", "created_at", "edited_at",
-    "reply_to_id", "source", "parent_channel_id",
+    "reply_to_id", "source", "parent_channel_id", "parent_channel_name",
 )
 _INSERT = (
     f"INSERT INTO messages (id, {', '.join(_COLUMNS)}) "
@@ -42,7 +42,7 @@ def _values(m: Message, team_ids: frozenset[str]) -> tuple:
         m.guild_id, m.channel_id, m.channel_name, m.thread_id, m.author_id, m.author_name,
         m.author_avatar_url, int(m.author_id in team_ids), int(m.is_bot), m.content,
         to_iso(m.created_at), to_iso(m.edited_at) if m.edited_at else None,
-        m.reply_to_id, m.source, m.parent_channel_id,
+        m.reply_to_id, m.source, m.parent_channel_id, m.parent_channel_name,
     )
 
 

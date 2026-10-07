@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS messages (
     edited_at TEXT,
     reply_to_id TEXT,
     source TEXT NOT NULL,
-    parent_channel_id TEXT
+    parent_channel_id TEXT,
+    parent_channel_name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id, created_at);
@@ -169,7 +170,7 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("labeler", "TEXT NOT NULL DEFAULT 'llm'"),
         ("themed_at", "TEXT"),
     ),
-    "messages": (("parent_channel_id", "TEXT"),),
+    "messages": (("parent_channel_id", "TEXT"), ("parent_channel_name", "TEXT")),
     "digests": (("removed_citations", "TEXT NOT NULL DEFAULT '[]'"),),
     "investigations": (("removed_citations", "TEXT NOT NULL DEFAULT '[]'"),),
 }

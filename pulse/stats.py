@@ -51,14 +51,17 @@ def theme_clause(conn: sqlite3.Connection, theme_id: int | None) -> tuple[str, l
 
 
 def top_channels(conn: sqlite3.Connection) -> list[dict]:
-    """Top-level channels with messages, threads counted under their parent, busiest first.
-
-    A forum channel that only has threads is listed under its own id. Thread rows imported
-    before parent_channel_id existed are left out until they are re-imported."""
+    """Top-level channels with community messages, threads counted under their parent,
+    busiest first. A forum channel that only has threads is named from its threads'
+    parent_channel_name (its id if that is unknown). Channels where only staff or bots post
+    are left out. Thread rows imported before parent_channel_id existed are left out until
+    they are re-imported."""
     rows = conn.execute(
         "SELECT COALESCE(parent_channel_id, channel_id) AS cid,"
-        " MAX(CASE WHEN thread_id IS NULL THEN channel_name END) AS name, COUNT(*) AS n FROM messages"
-        " WHERE thread_id IS NULL OR parent_channel_id IS NOT NULL GROUP BY cid ORDER BY n DESC, cid"
+        " COALESCE(MAX(CASE WHEN thread_id IS NULL THEN channel_name END), MAX(parent_channel_name)) AS name,"
+        " COUNT(*) AS n FROM messages"
+        " WHERE thread_id IS NULL OR parent_channel_id IS NOT NULL GROUP BY cid"
+        " HAVING SUM(is_team = 0 AND is_bot = 0) > 0 ORDER BY n DESC, cid"
     ).fetchall()
     return [{"id": r["cid"], "name": r["name"] or r["cid"], "messages": r["n"]} for r in rows]
 

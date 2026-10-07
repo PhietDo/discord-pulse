@@ -44,6 +44,7 @@ class Message:
     source: str = "file"
     parent_channel_id: str | None = None
     reactions: tuple[tuple[str, int], ...] = ()
+    parent_channel_name: str | None = None
 
 
 def merge_reactions(pairs) -> tuple[tuple[str, int], ...]:

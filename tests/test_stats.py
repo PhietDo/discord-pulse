@@ -323,3 +323,16 @@ def test_reply_after_now_is_not_answered():
     set_triage(conn, "q", sentiment=-1, needs_reply=True)
     r = stats.reply_stats(conn, REPLY_START, T0 + timedelta(days=2), T0 + timedelta(days=2))
     assert r == {"needs_reply": 1, "answered": 0, "median_minutes": None, "waiting_over_24h": 1}
+
+
+def test_forum_channel_shows_its_parent_name_and_staff_only_channels_are_hidden():
+    from dataclasses import replace as _replace
+    conn = connect(":memory:")
+    forum = [_replace(m, parent_channel_name="community-help") for m, _ in [
+        _m("f1", "601", -2, minutes=0, thread="601", parent="600"),
+        _m("f2", "602", -1, minutes=1, thread="602", parent="600"),
+    ]]
+    staff_only = _replace(msg("a1", "release notes", minutes=2, channel_id="900", author_id="t1"),
+                          channel_name="announcements")
+    upsert_messages(conn, forum + [staff_only], frozenset({"t1"}))
+    assert stats.top_channels(conn) == [{"id": "600", "name": "community-help", "messages": 2}]

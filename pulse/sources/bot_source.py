@@ -55,6 +55,7 @@ def message_from_discord(msg, guild_id: str) -> Message | None:
         channel_name=str(getattr(channel, "name", "") or ""),
         thread_id=str(channel.id) if is_thread else None,
         parent_channel_id=str(parent_id) if is_thread else None,
+        parent_channel_name=(str(getattr(getattr(channel, "parent", None), "name", "") or "") or None) if is_thread else None,
         author_id=str(author.id),
         author_name=str(getattr(author, "display_name", None) or author.name),
         author_avatar_url=str(avatar) if avatar else None,
