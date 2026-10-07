@@ -12,7 +12,7 @@ Return:
 - renames: only when a theme's name no longer describes what it collects.
 
 Rules:
-- Use only theme ids from the input themes and message ids from the input messages.
+- Use only theme ids from the input themes and message ids from the input messages. To put messages in a new theme, list them in that new theme's message_ids; never invent theme ids.
 - A message may be left unassigned if it fits nothing and is not worth a new theme (chit-chat, one-off questions).
 - Name themes by product area and problem, not by emotion ("Rate limit errors", not "Angry users").
 - Return empty lists when there is nothing to do.

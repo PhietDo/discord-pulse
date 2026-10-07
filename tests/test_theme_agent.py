@@ -89,7 +89,7 @@ def test_low_confidence_jev_choice_goes_to_llm():
 
 def test_invalid_proposal_is_retried_then_left_unthemed():
     conn = seed(("a", ["install"], "u1"))
-    bad = proposal(assignments=[{"message_id": "a", "theme_ids": [999]}])
+    bad = proposal(assignments=[{"message_id": "ghost", "theme_ids": []}])
     backend = FakeBackend(responses=[bad, bad])
     stats = run_themes(conn, make_llm(conn, make_config(), backend), NOW)
     assert (stats.failed_batches, stats.assigned) == (1, 0)
@@ -228,3 +228,18 @@ def test_jev_is_offered_the_most_recently_used_themes():
     run_themes(conn, make_llm(conn, make_config(classifier=classifier_config()), backend, classifier=fc), NOW)
     offered = [k for k in fc.choose_calls[0]["question"]["criteria"] if k != "none"]
     assert offered == [str(t) for t in [tids[41], tids[40], *tids[:38]]]
+
+
+def test_invented_theme_ids_in_assignments_are_dropped_not_fatal():
+    """Real models sometimes number their new themes and assign messages to those
+    numbers. Those assignments are dropped (never attached to whatever theme later gets
+    that id); messages only in such assignments stay unthemed for the next run."""
+    conn = seed(("a", ["install"], "u1"), ("b", ["install"], "u2"), ("c", ["auth"], "u3"))
+    response = proposal(
+        new_themes=[{"name": "Install failures", "description": "wheels", "message_ids": ["a"]}],
+        assignments=[{"message_id": "b", "theme_ids": [1]}, {"message_id": "c", "theme_ids": [2, 7]}],
+    )
+    stats = run_themes(conn, make_llm(conn, make_config(), FakeBackend(responses=[response])), NOW)
+    assert (stats.failed_batches, stats.created, stats.assigned) == (0, 1, 1)
+    assert links(conn) == {"a": 1}
+    assert themed(conn) == {"a"}

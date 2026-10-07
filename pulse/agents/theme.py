@@ -96,13 +96,28 @@ def validate_proposal(data: dict, message_ids: set[str], theme_ids: set[int]) ->
         - message_ids
     )
     bad_themes = sorted(
-        ({tid for a in data["assignments"] for tid in a["theme_ids"]}
-         | {m["from_id"] for m in data["merges"]} | {m["into_id"] for m in data["merges"]}
+        ({m["from_id"] for m in data["merges"]} | {m["into_id"] for m in data["merges"]}
          | {r["theme_id"] for r in data["renames"]})
         - theme_ids
     )
     if bad_messages or bad_themes:
         raise ValueError(f"unknown message ids {bad_messages}, unknown theme ids {bad_themes}")
+
+
+def drop_unknown_assignments(data: dict, theme_ids: set[int]) -> tuple[dict, set[str]]:
+    """Keep only assignment theme ids the model was shown. Models sometimes number the new
+    themes they propose and assign messages to those numbers; such ids must never attach to
+    whatever theme later receives that id. Returns the cleaned proposal and the ids of
+    messages left with no theme by it (unless a new theme claims them)."""
+    in_new = {m for t in data["new_themes"] for m in t["message_ids"]}
+    kept, orphaned = [], set()
+    for a in data["assignments"]:
+        ids = [tid for tid in a["theme_ids"] if tid in theme_ids]
+        if ids:
+            kept.append({**a, "theme_ids": ids})
+        elif a["message_id"] not in in_new:
+            orphaned.add(a["message_id"])
+    return {**data, "assignments": kept}, orphaned
 
 
 def themes_for_jev(conn: sqlite3.Connection, limit: int = MAX_THEMES_FOR_JEV) -> list[sqlite3.Row]:
@@ -203,9 +218,10 @@ def run_themes(conn: sqlite3.Connection, llm: LLMClient, now: datetime, *, concu
             stats.failed_batches += 1
             continue
         stats.llm_batches += 1
+        proposal, orphaned = drop_unknown_assignments(resp.data, theme_ids)
         with llm.db_lock, conn:
-            changes = apply_proposal(conn, resp.data, now, resp.run_id, budget)
-            retry = set(changes.unthemed_ids)
+            changes = apply_proposal(conn, proposal, now, resp.run_id, budget)
+            retry = set(changes.unthemed_ids) | orphaned
             mark_themed(conn, [mid for mid in ids if mid not in retry], now)
         stats.created += changes.created
         stats.assigned += changes.assigned
