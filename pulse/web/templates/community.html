@@ -9,7 +9,7 @@
 
 <section class="panel">
   <div class="panel-head"><h2>When questions arrive</h2><span class="note">messages needing a reply vs staff messages, by weekday and hour ({{ tz }})</span></div>
-  <div class="grid2">
+  <div class="pair">
     <div><p class="label">Questions needing a reply</p>{{ heat_questions }}</div>
     <div><p class="label">Staff messages</p>{{ heat_staff }}</div>
   </div>
@@ -19,14 +19,14 @@
   {% else %}<p class="empty">No questions in this window.</p>{% endif %}
 </section>
 
-<div class="grid2">
+<div class="pair">
   <section class="panel">
     <div class="panel-head"><h2>Newcomers</h2><span class="note">first message in this window</span></div>
     {% if nc.count %}
     <div class="strip">
       <div class="stat"><span class="label">New members</span><span class="big">{{ nc.count }}</span></div>
-      <div class="stat"><span class="label">Got a reply within 48h</span><span class="big">{{ nc.replied }}</span><span class="delta mut">{{ (nc.replied * 100 / nc.count)|round|int }}%</span></div>
-      <div class="stat"><span class="label">Came back</span><span class="big">{{ nc.returned }}</span><span class="delta mut">posted again a day or more later</span></div>
+      <div class="stat"><span class="label">Replied in 48h</span><span class="big">{{ nc.replied }}</span><span class="delta mut">{{ (nc.replied * 100 / nc.count)|round|int }}%</span></div>
+      <div class="stat"><span class="label">Came back</span><span class="big">{{ nc.returned }}</span><span class="delta mut">1+ day later</span></div>
     </div>
     <p class="pmeta">Per week: {% for w in nc.weekly %}{{ w.week }} <b>{{ w.count }}</b>{% if not loop.last %} · {% endif %}{% endfor %}</p>
     <h3>First messages with no reply</h3>
@@ -38,7 +38,7 @@
     <div class="panel-head"><h2>Community helpers</h2><span class="note">members answering other people's questions</span></div>
     {% if helpers %}
     <div class="tbl-wrap"><table class="chan">
-      <thead><tr><th>Member</th><th class="num">Answers</th><th class="num">People helped</th><th>Last answer</th></tr></thead>
+      <thead><tr><th>Member</th><th class="num">Answers</th><th class="num">People helped</th><th>Last</th></tr></thead>
       <tbody>{% for h in helpers %}<tr>
         <td><a href="/messages{{ f.qs(author_id=h.author_id) }}">{{ h.author_name }}</a></td>
         <td class="num">{{ h.answers }}</td><td class="num">{{ h.helped }}</td><td>{{ h.last_at|age(now) }}</td>
@@ -48,7 +48,7 @@
   </section>
 </div>
 
-<div class="grid2">
+<div class="pair">
   <section class="panel">
     <div class="panel-head"><h2>Most wanted</h2><span class="note">feature requests by reactions</span></div>
     <div class="msgs">{% for w in wanted %}{% call message_card(w.card, now, f) %}{% for e, n in w.emojis %}<span class="pill kind react">{{ e }} {{ n }}</span>{% endfor %}{% endcall %}{% else %}<p class="empty">No feature requests with reactions in this window.</p>{% endfor %}</div>
