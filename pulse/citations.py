@@ -122,10 +122,11 @@ class _Sanitizer(HTMLParser):
         self.out.append(html.escape(data[pos:], quote=False))
 
 
-def render_html(markdown_text: str, conn: sqlite3.Connection) -> str:
-    """HTML for agent reports. Raw HTML from the model is escaped first; each [[msg:id]]
-    becomes "@author" linked to the message in Discord (excerpt on hover); unknown ids
-    render as "[missing message]" and are logged.
+def render_html(markdown_text: str, conn: sqlite3.Connection, *, anonymize: bool = False) -> str:
+    """HTML for agent reports. With `anonymize`, each citation's author name is replaced by
+    "staff" or "a member" instead of their real name. Raw HTML from the model is escaped
+    first; each [[msg:id]] becomes "@author" linked to the message in Discord (excerpt on
+    hover); unknown ids render as "[missing message]" and are logged.
 
     Citations are swapped for inert tokens before markdown runs and their anchors are put
     back afterwards, so message content and author names never pass through markdown.
@@ -136,16 +137,17 @@ def render_html(markdown_text: str, conn: sqlite3.Connection) -> str:
 
     def anchor(mid: str) -> str:
         row = conn.execute(
-            "SELECT guild_id, channel_id, author_name, content FROM messages WHERE id = ?", (mid,)
+            "SELECT guild_id, channel_id, author_name, content, is_team FROM messages WHERE id = ?", (mid,)
         ).fetchone()
         if row is None:
             log.warning("citation to unknown message %s", mid)
             return "[missing message]"
         link = jump_link(row["guild_id"], row["channel_id"], mid)
         excerpt = row["content"][:140]
+        name = ("staff" if row["is_team"] else "a member") if anonymize else row["author_name"]
         return (
             f'<a class="cite" href="{html.escape(link)}" title="{html.escape(excerpt)}"'
-            f' target="_blank" rel="noopener">@{html.escape(row["author_name"])}</a>'
+            f' target="_blank" rel="noopener">@{html.escape(name)}</a>'
         )
 
     def to_token(match: re.Match) -> str:

@@ -77,6 +77,15 @@ Views: Overview, Pain points, Bugs, Mod queue, Messages, Launch, Reports, Runs. 
 - The dashboard has no login. It binds to 127.0.0.1 by default; don't expose it to the internet.
 - `web` starts without provider keys; the agent buttons are then off and say which key to set.
 
+## Shareable report
+
+```bash
+.venv/bin/python -m pulse.run report                  # last 7 days -> reports/pulse-<date>.html
+.venv/bin/python -m pulse.run report --days 30 --name "Acme SDK" --out acme-september.html
+```
+
+One HTML file with everything inline (no scripts, nothing loaded from the internet): headline numbers, the sentiment chart, top pain points with their status, coverage gaps, newcomers, community helpers, most wanted and the latest digest. Authors are anonymized ("staff", "a member", "Helper 1") unless you add `--with-names`; message excerpts and Discord links stay. The digest is written by a model and may still mention people by name in its text. `reports/` is git-ignored.
+
 ## Jev first pass (optional)
 
 With `[classifier] enabled = true`, triage asks Jev (a cheap closed-set classifier, via OpenRouter) about every message first. Confident, low-stakes messages are labelled by Jev alone; anything negative, likely to need a reply, a bug, docs issue, feature request or praise, or low-confidence, still goes to the triage LLM for full labels and topics. Staff messages are always neutral. If Jev fails on a message, the LLM handles it.

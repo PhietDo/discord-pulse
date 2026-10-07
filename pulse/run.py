@@ -39,6 +39,7 @@ from pulse.pipeline import (
     ingest,
     run_pipeline,
 )
+from pulse.report import build_report
 from pulse.store import sync_launches
 from pulse.sources.bot_source import BotSource, invite_url, is_fatal
 from pulse.sources.file_source import FileSource
@@ -82,6 +83,11 @@ def _parser() -> argparse.ArgumentParser:
     alerts.add_argument("--dry-run", action="store_true", help="print the alerts instead of posting them")
     invite = sub.add_parser("bot-invite", help="print the invite link that asks only for read access")
     invite.add_argument("--client-id", required=True, help="the Application ID from the Discord Developer Portal")
+    rep = sub.add_parser("report", help="write a single-file HTML report to share")
+    rep.add_argument("--days", type=int, default=7)
+    rep.add_argument("--out", type=Path, help="default: reports/pulse-<date>.html")
+    rep.add_argument("--with-names", action="store_true", help="show author names and helper names")
+    rep.add_argument("--name", help="server name shown in the title")
     sched = sub.add_parser("schedule", help="install launchd jobs: pipeline every 30 min, weekly digest, optional bot")
     sched.add_argument("action", choices=("install", "uninstall", "show"))
     sched.add_argument("--with-bot", action="store_true", help="also keep the live bot running")
@@ -292,6 +298,14 @@ def main(argv: list[str] | None = None) -> int:
             print("\n\n".join(a.text for a in found) if found else "no alerts")
         else:
             print(format_alerts(send_alerts(conn, config, now)))
+    elif args.command == "report":
+        if args.days < 1:
+            parser.error("--days must be at least 1")
+        out = args.out or Path("reports") / f"pulse-{now:%Y-%m-%d}.html"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(build_report(conn, config, now, days=args.days, with_names=args.with_names,
+                                    server_name=args.name or "Discord server"), encoding="utf-8")
+        print(f"report written to {out}" + ("" if args.with_names else " (authors anonymized)"))
     elif args.command == "web":
         conn.close()
         missing = missing_keys(config)

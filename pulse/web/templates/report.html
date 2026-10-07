@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ server_name }} community pulse, last {{ days }} days</title>
+<style>{{ css }}
+.shared{max-width:1100px;margin:0 auto;padding:28px 20px;display:flex;flex-direction:column;gap:20px}</style>
+</head>
+<body>
+<main class="shared">
+  <div class="head"><div>
+    <h1>{{ server_name }}: community pulse</h1>
+    <p class="sub">Last {{ days }} days to {{ generated }} · {{ "names shown" if with_names else "authors anonymized" }} · made with Discord Pulse</p>
+  </div></div>
+
+  <div class="strip">
+    <div class="stat"><span class="label">Community messages</span><span class="big">{{ cur.messages }}</span><span class="delta mut">{{ before.messages }} the {{ days }} days before</span></div>
+    <div class="stat"><span class="label">Avg sentiment</span><span class="big">{{ cur.avg_sentiment|signed }}</span><span class="delta mut">{{ before.avg_sentiment|signed }} before</span></div>
+    <div class="stat"><span class="label">Needed a reply</span><span class="big">{{ cur.needs_reply }}</span><span class="delta mut">{{ open_queue }} open in the mod queue</span></div>
+    <div class="stat"><span class="label">Newcomers</span><span class="big">{{ nc.count }}</span><span class="delta mut">{{ nc.replied }} got a reply within 48h</span></div>
+  </div>
+
+  <section class="panel"><div class="panel-head"><h2>Sentiment and volume</h2></div>{{ chart }}</section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Top pain points</h2><span class="note">score = messages × negativity × growth</span></div>
+    {% if pains %}
+    <div class="tbl-wrap"><table class="chan">
+      <thead><tr><th>Pain point</th><th>Status</th><th>Trend</th><th class="num">Last 7 days</th><th class="num">7 before</th><th class="num">Score</th></tr></thead>
+      <tbody>{% for p in pains %}<tr><td>{{ p.name }}</td><td>{{ p.status }}</td><td>{{ p.spark }}</td><td class="num">{{ p.volume }}</td><td class="num">{{ p.prev }}</td><td class="num">{{ p.score|round|int }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty">No pain points yet.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Coverage gaps</h2><span class="note">questions vs staff messages by hour ({{ tz }})</span></div>
+    {{ heat_questions }}
+    {% if gaps %}<ul class="gaps">{% for g in gaps %}<li><b>{{ g.label }}</b>: {{ g.questions }} question{{ 's' if g.questions != 1 }}, {{ g.staff }} staff message{{ 's' if g.staff != 1 }}</li>{% endfor %}</ul>
+    {% else %}<p class="empty">No questions in this window.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Newcomers</h2></div>
+    {% if nc.count %}<p>{{ nc.count }} new members posted for the first time; {{ nc.replied }} got a reply within 48 hours and {{ nc.returned }} came back.</p>
+    {% else %}<p class="empty">No newcomers in this window.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Community helpers</h2><span class="note">members answering other people's questions</span></div>
+    {% if helpers %}<div class="tbl-wrap"><table class="chan">
+      <thead><tr><th>Member</th><th class="num">Answers</th><th class="num">People helped</th></tr></thead>
+      <tbody>{% for h in helpers %}<tr><td>{{ h.author_name }}</td><td class="num">{{ h.answers }}</td><td class="num">{{ h.helped }}</td></tr>{% endfor %}</tbody>
+    </table></div>{% else %}<p class="empty">No member answers in this window.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Most wanted</h2><span class="note">feature requests by reactions</span></div>
+    {% for w in wanted %}<p class="mtext">{% for e, n in w.emojis %}<span class="pill kind">{{ e }} {{ n }}</span> {% endfor %}{{ w.content }} <span class="mut">({{ w.author }}, <a href="{{ w.link }}">open in Discord</a>)</span></p>
+    {% else %}<p class="empty">No feature requests with reactions in this window.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Latest digest</h2></div>
+    {% if digest_html %}<div class="prose">{{ digest_html }}</div>{% else %}<p class="empty">No digest yet.</p>{% endif %}
+  </section>
+</main>
+</body>
+</html>

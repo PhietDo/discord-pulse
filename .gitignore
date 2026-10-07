@@ -10,3 +10,4 @@ pulse.toml
 eval/*.jsonl
 !eval/gold.example.jsonl
 logs/
+reports/
