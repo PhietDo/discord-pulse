@@ -27,14 +27,14 @@
     <div class="panel-head"><h2>Top pain points</h2><span class="note">score = messages × negativity × growth</span></div>
     {% if pains %}
     <div class="tbl-wrap"><table class="chan">
-      <thead><tr><th>Pain point</th><th>Status</th><th>Trend</th><th class="num">Last 7 days</th><th class="num">7 before</th><th class="num">Score</th></tr></thead>
+      <thead><tr><th>Pain point</th><th>Status</th><th>Trend</th><th class="num">This period</th><th class="num">Period before</th><th class="num">Score</th></tr></thead>
       <tbody>{% for p in pains %}<tr><td>{{ p.name }}</td><td>{{ p.status }}</td><td>{{ p.spark }}</td><td class="num">{{ p.volume }}</td><td class="num">{{ p.prev }}</td><td class="num">{{ p.score|round|int }}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% else %}<p class="empty">No pain points yet.</p>{% endif %}
   </section>
 
   <section class="panel">
-    <div class="panel-head"><h2>Coverage gaps</h2><span class="note">questions vs staff messages by hour ({{ tz }})</span></div>
+    <div class="panel-head"><h2>Coverage gaps</h2><span class="note">questions needing a reply by hour ({{ tz }}); staff counts in the list</span></div>
     {{ heat_questions }}
     {% if gaps %}<ul class="gaps">{% for g in gaps %}<li><b>{{ g.label }}</b>: {{ g.questions }} question{{ 's' if g.questions != 1 }}, {{ g.staff }} staff message{{ 's' if g.staff != 1 }}</li>{% endfor %}</ul>
     {% else %}<p class="empty">No questions in this window.</p>{% endif %}
@@ -61,8 +61,15 @@
   </section>
 
   <section class="panel">
+    <div class="panel-head"><h2>Most reacted</h2><span class="note">top reacted messages</span></div>
+    {% for w in reacted %}<p class="mtext">{% for e, n in w.emojis %}<span class="pill kind">{{ e }} {{ n }}</span> {% endfor %}{{ w.content }} <span class="mut">({{ w.author }}, <a href="{{ w.link }}">open in Discord</a>)</span></p>
+    {% else %}<p class="empty">No reacted messages in this window.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
     <div class="panel-head"><h2>Latest digest</h2></div>
-    {% if digest_html %}<div class="prose">{{ digest_html }}</div>{% else %}<p class="empty">No digest yet.</p>{% endif %}
+    <p class="mut">Written by a model; names it mentions are replaced when authors are anonymized.</p>
+    {% if digest_html %}<div class="report">{{ digest_html }}</div>{% else %}<p class="empty">No digest yet.</p>{% endif %}
   </section>
 </main>
 </body>

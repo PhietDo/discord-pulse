@@ -86,7 +86,7 @@ def _parser() -> argparse.ArgumentParser:
     invite = sub.add_parser("bot-invite", help="print the invite link that asks only for read access")
     invite.add_argument("--client-id", required=True, help="the Application ID from the Discord Developer Portal")
     rep = sub.add_parser("report", help="write a single-file HTML report to share")
-    rep.add_argument("--days", type=int, default=7)
+    rep.add_argument("--days", type=int, default=7, help="days to cover (default 7)")
     rep.add_argument("--out", type=Path, help="default: reports/pulse-<date>.html")
     rep.add_argument("--with-names", action="store_true", help="show author names and helper names")
     rep.add_argument("--name", help="server name shown in the title")
@@ -304,8 +304,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(format_alerts(send_alerts(conn, config, now)))
     elif args.command == "report":
-        if args.days < 1:
-            parser.error("--days must be at least 1")
+        if not 1 <= args.days <= 365:
+            parser.error("--days must be between 1 and 365")
+        if args.out and args.out.is_dir():
+            parser.error("--out is a directory")
         out = args.out or Path("reports") / f"pulse-{now:%Y-%m-%d}.html"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(build_report(conn, config, now, days=args.days, with_names=args.with_names,

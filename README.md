@@ -84,7 +84,9 @@ Views: Overview, Pain points, Bugs, Mod queue, Messages, Launch, Reports, Runs. 
 .venv/bin/python -m pulse.run report --days 30 --name "Acme SDK" --out acme-september.html
 ```
 
-One HTML file with everything inline (no scripts, nothing loaded from the internet): headline numbers, the sentiment chart, top pain points with their status, coverage gaps, newcomers, community helpers, most wanted and the latest digest. Authors are anonymized ("staff", "a member", "Helper 1") unless you add `--with-names`; message excerpts and Discord links stay. The digest is written by a model and may still mention people by name in its text. `reports/` is git-ignored.
+One HTML file with everything inline (no scripts, nothing loaded from the internet): headline numbers, the sentiment chart, top pain points with their status, coverage gaps, newcomers, community helpers, most wanted, most reacted and the latest digest. Authors are anonymized ("staff", "a member", "Helper 1") unless you add `--with-names`; message excerpts and Discord links stay. The digest is written by a model and may still mention people by name in its text. `reports/` is git-ignored.
+
+Message excerpts are kept and may contain @mentions of names.
 
 ## Jev first pass (optional)
 
