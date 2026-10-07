@@ -367,3 +367,25 @@ The approved mockup (`docs/design/dashboard-mockup.html`) is the visual spec for
 ### 15.6 Later (Plan 5 and beyond)
 - Plan 5: send a pain point to GitHub or Linear as an issue with its evidence links; Slack alerts for pain point spikes and frustrated users unanswered for more than 12 hours.
 - Later: a "community helpers" view of non-staff members who answer others' questions.
+
+## 16. Addendum (2026-10-07): community analytics, after reviewing chat-analytics
+
+Ideas taken from github.com/mlomb/chat-analytics (a statistics report built from the same DiscordChatExporter JSON), kept only where they answer a DevRel question. All of them are plain SQL and Python: no model calls, no new cost. None needs a new bot permission: reaction counts come with message history.
+
+### 16.1 Reactions
+- Import keeps each message's reaction counts (`reactions` table: message, emoji, count), from DiscordChatExporter JSON and from the bot. Re-importing a message replaces its counts.
+- The bot records counts as they are when it reads a message; live reaction changes are not tracked (that would need the reactions intent).
+
+### 16.2 Community view (`/community`)
+- **When questions arrive vs when staff answer:** two weekday × hour heatmaps for the selected window, community messages that need a reply and staff messages, in `[server] timezone` (default UTC). Below them, the three hours with the most questions and the fewest staff messages ("coverage gaps").
+- **Newcomers:** authors whose first community message in the database falls in the window. Counts per week, how many got any reply from someone else within 48 hours (a direct reply, or a later message in the thread the first message is in or started), and how many posted again on a later day. The newcomer first messages that got no reply are listed with links. "First message" means first in the imported history.
+- **Community helpers:** non-staff, non-bot members ranked by how many questions (messages labelled needs-reply) by other people they answered in the window, by direct reply or in the question's thread. Shows answers, people helped, and a link to all their messages.
+- **Most wanted:** feature requests in the window ranked by total reactions, then most reacted messages of any kind, each with its emoji counts.
+- The channel filter applies to everything on the page.
+
+### 16.3 Shareable report
+- `python -m pulse.run report [--days 7] [--out PATH] [--with-names]` writes one self-contained HTML file (inline CSS, server-drawn SVG, no JavaScript, no external requests) for people who do not run the dashboard: headline numbers, sentiment chart, top pain points with status, coverage gaps, newcomers, helpers, most wanted, open mod queue count, and the latest digest.
+- Author names are replaced by "a member" (staff by "staff") and avatars are left out unless `--with-names` is given; message excerpts and Discord links stay. Default output: `reports/pulse-<date>.html`; `reports/` is git-ignored.
+
+### 16.4 Not taken from chat-analytics
+Emoji usage, word clouds, edit-time statistics, call statistics, and language detection (deferred); they do not find pain points or who needs help.
