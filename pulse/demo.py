@@ -14,7 +14,7 @@ from pathlib import Path
 from pulse.citations import cited_ids
 from pulse.config import AGENTS, Config, Launch, ModelRef, Price
 from pulse.db import connect
-from pulse.models import Message, from_iso, to_iso
+from pulse.models import Message, from_iso, merge_reactions, to_iso
 from pulse.modqueue import refresh_mod_queue
 from pulse.store import sync_launches, upsert_messages
 from pulse.theme_status import set_status
@@ -33,6 +33,26 @@ TEAM = {"t1": "sam", "t2": "priya"}
 USERS = (
     "alice", "bob", "carol", "dan", "erin", "fox", "gus", "hal", "ivy", "jo", "kai", "lena", "mo",
     "nia", "omar", "pia", "quinn", "ravi", "sol", "tess", "uma", "vik", "wes", "xin", "yara", "zed",
+)
+HELPERS = ("carol", "hal", "quinn")
+HELPER_REPLIES = (
+    "I hit this too: pinning acme to 2.0.1 fixed it until the patch ships",
+    "the token exchange step is in the migration guide under Auth, step 3",
+    "try `acme login --reset`, that cleared it for me",
+)
+NEWCOMERS = (
+    ("ana", "hi all! where do I find the API key page?"),
+    ("ben", "new here: does acme support Bun yet?"),
+    ("cy", "first time trying acme deploy, it hangs at 'uploading'"),
+    ("dee", "hello! is there a Python 3.13 wheel for M1?"),
+    ("eli", "just joined, how do I rotate tokens?"),
+    ("fay", "hi, is the free tier rate limit per key or per org?"),
+    ("gil", "newbie question: what's the difference between acme dev and acme run?"),
+    ("hana", "hey! any example for the Next.js app router?"),
+    ("ike", "first post: the docs link for webhooks 404s"),
+    ("jun", "hi, can I self-host the dashboard?"),
+    ("kit", "new user: getting 401 after upgrading to v2"),
+    ("lou", "hello, does acme work behind a corporate proxy?"),
 )
 DAYS = 30
 LAUNCH_DAYS_AGO = 5
@@ -141,6 +161,14 @@ STAFF_REPLIES = (
 )
 
 
+def _demo_reactions(kind: str, rng2: random.Random) -> tuple[tuple[str, int], ...]:
+    if kind == "feature_request":
+        return merge_reactions([("👍", rng2.randint(1, 14)), ("❤️", rng2.randint(0, 3))])
+    if kind == "praise":
+        return merge_reactions([("🎉", rng2.randint(0, 6))])
+    return ()
+
+
 def demo_config(db_path, now: datetime) -> Config:
     launch_day = (now - timedelta(days=LAUNCH_DAYS_AGO)).date().isoformat()
     return Config(
@@ -193,6 +221,7 @@ def seed_demo(path, now: datetime) -> dict:
         for suffix in ("", "-wal", "-shm"):
             Path(f"{path}{suffix}").unlink(missing_ok=True)
     rng = random.Random(42)
+    rng2 = random.Random(7)
     config = demo_config(path, now)
     today = datetime.combine(now.date(), time.min, timezone.utc)
     launch = today - timedelta(days=LAUNCH_DAYS_AGO)
@@ -203,12 +232,13 @@ def seed_demo(path, now: datetime) -> dict:
     members: dict[str, list[str]] = {}
     next_id = iter(range(1_300_000_000_000_000_000, 1_400_000_000_000_000_000))
 
-    def add(channel, author_id, author, content, at, *, thread=None, parent=None, reply_to=None, label=None, theme=None):
+    def add(channel, author_id, author, content, at, *, thread=None, parent=None, reply_to=None, label=None,
+             theme=None, reactions=()):
         mid = str(next(next_id))
         messages.append(Message(
             id=mid, guild_id=GUILD, channel_id=channel, author_id=author_id, author_name=author, content=content,
             created_at=at, channel_name=CHANNEL_NAMES[channel], thread_id=thread, reply_to_id=reply_to,
-            source="demo", parent_channel_id=parent,
+            source="demo", parent_channel_id=parent, reactions=reactions,
         ))
         if label is not None:
             labels[mid] = label
@@ -241,13 +271,42 @@ def seed_demo(path, now: datetime) -> dict:
                 "topics": [spec["topic"]] if "topic" in spec else [],
             }
             mid = add(channel, f"u-{author}", author, rng.choice(spec["phrases"]), at,
-                      thread=thread, parent=parent, label=label, theme=spec.get("key"))
+                      thread=thread, parent=parent, label=label, theme=spec.get("key"),
+                      reactions=_demo_reactions(spec["kind"], rng2))
             if needs and rng.random() < 0.45:
                 reply_at = at + timedelta(minutes=rng.randint(10, 600))
                 if reply_at < now:
                     staff = rng.choice(sorted(TEAM))
                     add(channel, staff, TEAM[staff], rng.choice(STAFF_REPLIES), reply_at,
                         thread=thread, parent=parent, reply_to=None if thread else mid)
+            elif needs and rng2.random() < 0.4:
+                helper = rng2.choice(HELPERS)
+                reply_at = at + timedelta(minutes=rng2.randint(5, 240))
+                if helper != author and reply_at < now:
+                    add(channel, f"u-{helper}", helper, rng2.choice(HELPER_REPLIES), reply_at,
+                        thread=thread, parent=parent, reply_to=None if thread else mid)
+
+    for name, question in NEWCOMERS:
+        at = today - timedelta(days=rng2.randint(0, 20), minutes=rng2.randint(0, 24 * 60 - 1))
+        if at >= now:
+            continue
+        label = {"sentiment": rng2.choice((-1, 0)), "kind": "question", "needs_reply": True, "topics": []}
+        mid = add(HELP, f"n-{name}", name, question, at, label=label)
+        roll = rng2.random()
+        if roll < 0.35:
+            staff = rng2.choice(sorted(TEAM))
+            responder = (staff, TEAM[staff], rng2.choice(STAFF_REPLIES))
+        elif roll < 0.65:
+            helper = rng2.choice(HELPERS)
+            responder = (f"u-{helper}", helper, rng2.choice(HELPER_REPLIES))
+        else:
+            responder = None
+        if responder and at + timedelta(hours=2) < now:
+            add(HELP, *responder, at + timedelta(minutes=rng2.randint(10, 600)), reply_to=mid)
+        later = at + timedelta(days=rng2.randint(1, 6))
+        if rng2.random() < 0.5 and later < now:
+            add(GENERAL, f"n-{name}", name, "thanks, got it working!", later,
+                label={"sentiment": 1, "kind": "praise", "needs_reply": False, "topics": []})
 
     conn = connect(path)
     try:

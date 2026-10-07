@@ -49,3 +49,21 @@ def test_demo_dashboard_pages_render(tmp_path):
     assert "Fix shipped" in pain and "Fix in progress" in pain and "Acknowledged" in pain
     assert "Agents are off in demo mode" in client.get("/reports").text
     assert "M1 install fails on v2" in client.get("/messages?q=wheel").text
+
+
+def test_demo_has_community_data(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    from pulse import community
+    from pulse.db import connect
+    from pulse.demo import seed_demo
+
+    now = datetime(2026, 10, 7, 12, tzinfo=timezone.utc)
+    seed_demo(tmp_path / "demo.db", now)
+    conn = connect(tmp_path / "demo.db")
+    start = now - timedelta(days=30)
+    nc = community.newcomers(conn, start, now)
+    assert nc["count"] >= 8 and 0 < nc["replied"] < nc["count"] and nc["returned"] > 0
+    board = community.helpers(conn, start, now)
+    assert len(board) >= 2 and all(not h["author_id"].startswith("t") for h in board)
+    assert community.most_wanted(conn, start, now) and community.top_reacted(conn, start, now)

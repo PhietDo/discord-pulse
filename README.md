@@ -22,6 +22,10 @@ All screenshots use the built-in demo dataset (a made-up "Acme SDK" community fr
 |---|---|
 | ![Messages: search by text, author, pain point, type and sentiment](docs/screenshots/messages.png) | ![Runs: spend against the daily cap, cost per day and failures](docs/screenshots/runs.png) |
 
+| Community | |
+|---|---|
+| ![Community: when questions arrive vs when staff answer, newcomers, helpers, most wanted](docs/screenshots/community.png) | |
+
 ## Setup
 
 ```bash
