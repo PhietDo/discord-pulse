@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from pulse.community import activity_heatmap, coverage_gaps, helpers, most_wanted, newcomers, top_reacted
@@ -83,6 +83,13 @@ def test_newcomers_reply_and_return():
     assert newcomers(db(msgs, {}), START, END, channels=("200",))["count"] == 0
 
 
+def test_newcomers_weekly_buckets_use_the_configured_timezone():
+    at = datetime(2026, 3, 2, 0, 30, tzinfo=timezone.utc)
+    conn = db([replace(m("n1", author="u1"), created_at=at)], {})
+    nc = newcomers(conn, at, at + timedelta(minutes=1), tz="America/New_York")
+    assert nc["weekly"] == [{"week": "2026-02-23", "count": 1}]
+
+
 def test_helpers_rank_members_who_answer_others():
     msgs = [
         m("q1", author="u1"), m("a1", minutes=10, author="u2", reply_to="q1"),
@@ -99,6 +106,12 @@ def test_helpers_rank_members_who_answer_others():
     assert [(h["author_id"], h["answers"], h["helped"]) for h in board] == [("u2", 2, 2), ("u5", 1, 1)]
     assert board[0]["sample_id"] == "a2" and board[0]["author_name"] == "u2"
     assert helpers(db(msgs, labels), START, END, channels=("999",)) == []
+
+
+def test_helpers_skips_answers_that_themselves_need_a_reply():
+    msgs = [m("q1", author="u_a", thread="900"), m("q2", minutes=10, author="u_b", thread="900")]
+    labels = {"q1": dict(needs_reply=True), "q2": dict(needs_reply=True)}
+    assert helpers(db(msgs, labels), START, END) == []
 
 
 def test_most_wanted_and_top_reacted():

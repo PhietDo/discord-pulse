@@ -19,7 +19,7 @@ def _with_cards(conn, items: list[dict]) -> list[dict]:
 def community_view(request: Request, conn=Depends(get_conn), f: Filters = Depends(get_filters)):
     tz = request.app.state.settings.config.timezone
     heat = community.activity_heatmap(conn, f.start, f.end, tz, f.channels)
-    nc = community.newcomers(conn, f.start, f.end, f.channels)
+    nc = community.newcomers(conn, f.start, f.end, f.channels, tz)
     return render(
         request, "community.html", conn, f, "community",
         tz=tz,

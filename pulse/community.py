@@ -58,9 +58,10 @@ def _monday(day: date) -> date:
 
 
 def newcomers(conn: sqlite3.Connection, start: datetime, end: datetime,
-              channels: tuple[str, ...] | None = None) -> dict:
+              channels: tuple[str, ...] | None = None, tz: str = "UTC") -> dict:
     """Authors whose first community message (in the imported history, within the channel
-    scope) falls in [start, end)."""
+    scope) falls in [start, end). Weekly buckets are Mondays in `tz`."""
+    zone = ZoneInfo(tz)
     scope, params = scope_clause(channels)
     rows = conn.execute(
         "SELECT m.id, m.author_id, m.thread_id, m.created_at FROM messages m"
@@ -77,7 +78,8 @@ def newcomers(conn: sqlite3.Connection, start: datetime, end: datetime,
             seen.add(r["author_id"])
             firsts.append(r)
     weeks: dict[str, int] = {}
-    week, last = _monday(start.date()), _monday(max(start, end - timedelta(microseconds=1)).date())
+    week = _monday(start.astimezone(zone).date())
+    last = _monday(max(start, end - timedelta(microseconds=1)).astimezone(zone).date())
     while week <= last:
         weeks[week.isoformat()] = 0
         week += timedelta(days=7)
@@ -85,7 +87,7 @@ def newcomers(conn: sqlite3.Connection, start: datetime, end: datetime,
     unreplied: list[str] = []
     for r in firsts:
         at = from_iso(r["created_at"])
-        key = _monday(at.date()).isoformat()
+        key = _monday(at.astimezone(zone).date()).isoformat()
         weeks[key] = weeks.get(key, 0) + 1
         got_reply = conn.execute(
             "SELECT 1 FROM messages x WHERE x.author_id != ? AND x.is_bot = 0"
@@ -127,7 +129,9 @@ def helpers(conn: sqlite3.Connection, start: datetime, end: datetime,
     """Non-staff members ranked by answers to other people's needs-reply messages."""
     scope, params = scope_clause(channels)
     answers = conn.execute(
-        "SELECT m.id, m.author_id, m.author_name, m.created_at, m.reply_to_id, m.thread_id FROM messages m"
+        "SELECT m.id, m.author_id, m.author_name, m.created_at, m.reply_to_id, m.thread_id,"
+        " COALESCE(t.needs_reply, 0) AS needs_reply FROM messages m"
+        " LEFT JOIN triage t ON t.message_id = m.id"
         f" WHERE m.is_team = 0 AND m.is_bot = 0 AND m.created_at >= ? AND m.created_at < ?{scope}"
         " ORDER BY m.created_at, m.id",
         (to_iso(start), to_iso(end), *params),
@@ -153,6 +157,8 @@ def helpers(conn: sqlite3.Connection, start: datetime, end: datetime,
     )
     board: dict[str, dict] = {}
     for a in answers:
+        if a["needs_reply"]:
+            continue
         for qid in candidates(a):
             q = questions.get(qid)
             if q is None or not q["needs_reply"] or q["author_id"] == a["author_id"] or q["created_at"] >= a["created_at"]:

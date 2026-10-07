@@ -112,10 +112,12 @@ def drop_unknown_assignments(data: dict, theme_ids: set[int]) -> tuple[dict, set
     in_new = {m for t in data["new_themes"] for m in t["message_ids"]}
     kept, orphaned = [], set()
     for a in data["assignments"]:
+        if a["message_id"] in in_new:
+            continue
         ids = [tid for tid in a["theme_ids"] if tid in theme_ids]
         if ids:
             kept.append({**a, "theme_ids": ids})
-        elif a["message_id"] not in in_new:
+        else:
             orphaned.add(a["message_id"])
     return {**data, "assignments": kept}, orphaned
 

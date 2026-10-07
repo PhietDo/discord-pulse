@@ -2,7 +2,7 @@ import json
 
 from pulse.agents.base import BackendResult, ProviderError
 from pulse.agents.classifier import ChoiceResult
-from pulse.agents.theme import ThemeStats, run_themes, select_candidates
+from pulse.agents.theme import ThemeStats, drop_unknown_assignments, run_themes, select_candidates
 from pulse.db import connect
 from pulse.pipeline import format_themes
 from pulse.store import upsert_messages
@@ -243,3 +243,16 @@ def test_invented_theme_ids_in_assignments_are_dropped_not_fatal():
     assert (stats.failed_batches, stats.created, stats.assigned) == (0, 1, 1)
     assert links(conn) == {"a": 1}
     assert themed(conn) == {"a"}
+
+
+def test_drop_unknown_assignments_lets_a_new_theme_claim_its_message():
+    """A message can be assigned to a valid existing theme id and also be claimed by a new
+    theme the model is proposing in the same reply. The new theme wins: the assignment is
+    dropped (not kept) and the message is not reported as orphaned either."""
+    data = {
+        "assignments": [{"message_id": "a", "theme_ids": [1]}, {"message_id": "b", "theme_ids": [9]}],
+        "new_themes": [{"name": "X", "description": "d", "message_ids": ["a"]}],
+    }
+    cleaned, orphaned = drop_unknown_assignments(data, {1})
+    assert cleaned["assignments"] == []
+    assert orphaned == {"b"}

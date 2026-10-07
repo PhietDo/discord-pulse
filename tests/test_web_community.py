@@ -30,7 +30,15 @@ def test_community_page_renders_sections(tmp_path):
 
 
 def test_community_respects_channel_filter(tmp_path):
-    html = make_client(tmp_path).get("/community?days=7&channel=999").text
+    client = make_client(tmp_path)
+    conn = connect(tmp_path / "pulse.db")
+    with conn:
+        conn.execute("UPDATE triage SET kind = 'feature_request' WHERE message_id = 'q1'")
+        conn.execute("INSERT INTO reactions (message_id, emoji, count) VALUES ('q1', '🚀', 3)")
+    conn.close()
+    # q1 lives in #help (channel 100); filtering to #general (200) must hide it, proving the
+    # channel scope is applied rather than coincidentally finding nothing at all.
+    html = client.get("/community?days=7&channel=200").text
     assert "No feature requests with reactions" in html
 
 
