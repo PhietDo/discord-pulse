@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterator
 
 from pulse.config import Config
-from pulse.models import Message, from_iso
+from pulse.models import Message, from_iso, merge_reactions
 from pulse.store import upsert_messages
 
 KEEP_TYPES = ("default", "reply")
@@ -64,6 +64,10 @@ def message_from_discord(msg, guild_id: str) -> Message | None:
         reply_to_id=str(reply_to) if reply_to else None,
         is_bot=bool(getattr(author, "bot", False)),
         source="bot",
+        reactions=merge_reactions(
+            (getattr(r.emoji, "name", None) or str(r.emoji), getattr(r, "count", 0))
+            for r in getattr(msg, "reactions", None) or []
+        ),
     )
 
 

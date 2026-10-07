@@ -5,6 +5,7 @@
 guild_id = "123456789012345678"
 channel_ids = []                     # empty = every channel in your exports; otherwise only these channels and their threads
 team_member_ids = []                 # staff user ids; their replies count as "answered"
+timezone = "UTC"                    # for the Community view's weekday x hour charts, e.g. "America/New_York"
 
 [mod_queue]
 reply_window_hours = 12

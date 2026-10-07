@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pulse.models import KINDS
 
@@ -104,6 +105,7 @@ class Config:
     bot_backfill_days: int = 30
     integrations: IntegrationsConfig = IntegrationsConfig()
     alerts: AlertsConfig = AlertsConfig()
+    timezone: str = "UTC"
 
 
 def _price(name: str, raw: Any) -> Price:
@@ -240,6 +242,12 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, requi
     if not guild_id:
         raise ConfigError("[server] guild_id is required")
 
+    tz = str(server.get("timezone", "UTC"))
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError) as e:
+        raise ConfigError(f'[server] timezone {tz!r} is not a known time zone (for example "America/New_York")') from e
+
     models_raw = raw.get("models", {})
     models: dict[str, ModelRef] = {}
     for agent in AGENTS:
@@ -280,6 +288,7 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None, *, requi
         bot_backfill_days=backfill_days,
         integrations=_integrations(raw.get("integrations")),
         alerts=_alerts(raw.get("alerts")),
+        timezone=tz,
     )
 
 

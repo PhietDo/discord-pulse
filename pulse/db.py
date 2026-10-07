@@ -29,6 +29,13 @@ CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_messages_reply ON messages(reply_to_id);
 CREATE INDEX IF NOT EXISTS idx_messages_author ON messages(author_id);
 
+CREATE TABLE IF NOT EXISTS reactions (
+    message_id TEXT NOT NULL REFERENCES messages(id),
+    emoji TEXT NOT NULL,
+    count INTEGER NOT NULL CHECK (count >= 0),
+    PRIMARY KEY (message_id, emoji)
+);
+
 CREATE TABLE IF NOT EXISTS agent_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent TEXT NOT NULL,

@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from pulse.models import Message, parse_timestamp
+from pulse.models import Message, merge_reactions, parse_timestamp
 
 CSV_REQUIRED = (
     "guild_id", "channel_id", "message_id", "author_id", "author_name", "content", "created_at",
@@ -87,6 +87,10 @@ class FileSource:
                         reply_to_id=str(reference["messageId"]) if reference.get("messageId") else None,
                         source="file",
                         parent_channel_id=parent_channel_id,
+                        reactions=merge_reactions(
+                            ((r.get("emoji") or {}).get("name") or (r.get("emoji") or {}).get("code"), r.get("count"))
+                            for r in raw.get("reactions") or [] if isinstance(r, dict)
+                        ),
                     )
                 )
             except (AttributeError, KeyError, TypeError, ValueError) as e:

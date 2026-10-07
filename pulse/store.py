@@ -28,6 +28,15 @@ class UpsertStats:
     unchanged: int = 0
 
 
+def _store_reactions(conn: sqlite3.Connection, m: Message) -> None:
+    conn.execute("DELETE FROM reactions WHERE message_id = ?", (m.id,))
+    if m.reactions:
+        conn.executemany(
+            "INSERT INTO reactions (message_id, emoji, count) VALUES (?, ?, ?)",
+            [(m.id, emoji, count) for emoji, count in m.reactions],
+        )
+
+
 def _values(m: Message, team_ids: frozenset[str]) -> tuple:
     return (
         m.guild_id, m.channel_id, m.channel_name, m.thread_id, m.author_id, m.author_name,
@@ -47,9 +56,11 @@ def upsert_messages(
             values = _values(m, team_ids)
             if existing is None:
                 conn.execute(_INSERT, (m.id, *values))
+                _store_reactions(conn, m)
                 stats.inserted += 1
                 continue
             conn.execute(_UPDATE, (*values, m.id))
+            _store_reactions(conn, m)
             if existing["content"] != m.content:
                 # Edited message: its old labels no longer apply.
                 conn.execute("DELETE FROM triage WHERE message_id = ?", (m.id,))

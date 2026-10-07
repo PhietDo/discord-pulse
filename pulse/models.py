@@ -43,6 +43,22 @@ class Message:
     reply_to_id: str | None = None
     source: str = "file"
     parent_channel_id: str | None = None
+    reactions: tuple[tuple[str, int], ...] = ()
+
+
+def merge_reactions(pairs) -> tuple[tuple[str, int], ...]:
+    """Sum counts per emoji name; drop blank names and counts that are not positive whole
+    numbers; most used first, then by name."""
+    totals: dict[str, int] = {}
+    for name, count in pairs:
+        name = str(name or "").strip()
+        try:
+            n = int(count)
+        except (TypeError, ValueError):
+            continue
+        if name and n > 0:
+            totals[name] = totals.get(name, 0) + n
+    return tuple(sorted(totals.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 @dataclass(frozen=True)
