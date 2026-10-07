@@ -1181,10 +1181,10 @@ def build_report(conn: sqlite3.Connection, config: Config, now: datetime, *, day
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ server_name }} community pulse, last {{ days }} days</title>
 <style>{{ css }}
-.report{max-width:1100px;margin:0 auto;padding:28px 20px;display:flex;flex-direction:column;gap:20px}</style>
+.shared{max-width:1100px;margin:0 auto;padding:28px 20px;display:flex;flex-direction:column;gap:20px}</style>
 </head>
 <body>
-<main class="report">
+<main class="shared">
   <div class="head"><div>
     <h1>{{ server_name }}: community pulse</h1>
     <p class="sub">Last {{ days }} days to {{ generated }} · {{ "names shown" if with_names else "authors anonymized" }} · made with Discord Pulse</p>
